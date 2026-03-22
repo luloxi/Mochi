@@ -19,7 +19,7 @@ export async function GET(_request: Request, context: Params) {
     return new NextResponse(body, {
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=86400, immutable",
+        "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
       },
     });
   } catch {
