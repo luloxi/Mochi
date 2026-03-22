@@ -10,6 +10,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { usePathname } from "next/navigation";
 import styles from "./site-mochi-mascot.module.css";
 import { useLanguage } from "@/components/language-provider";
 import { useSiteMochi } from "@/components/site-mochi-provider";
@@ -301,6 +302,7 @@ function buildSpriteSrc(characterKey: string, fileName: string, spritesBaseUri?:
 }
 
 export function SiteMochiMascot() {
+  const pathname = usePathname();
   const { isSpanish, language } = useLanguage();
   const {
     config,
@@ -310,6 +312,10 @@ export function SiteMochiMascot() {
     canUseCurrentProvider,
     updateConfig,
   } = useSiteMochi();
+
+  if (pathname !== "/") {
+    return null;
+  }
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const actorRef = useRef<HTMLDivElement | null>(null);
   const bubbleRef = useRef<HTMLDivElement | null>(null);

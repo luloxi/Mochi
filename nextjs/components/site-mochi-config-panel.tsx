@@ -23,7 +23,6 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import { useSiteMochi, type SiteMochiIconTheme } from "@/components/site-mochi-provider";
 import { useTheme, type Theme } from "@/components/theme-provider";
-import { useWalletSession } from "@/components/wallet-provider";
 import {
   SITE_MOCHI_CHAT_DEFAULT_HEIGHT_PX,
   SITE_MOCHI_CHAT_FONT_SIZE_MAP,
@@ -80,11 +79,6 @@ const THEMED_SELECT_CLASS =
 
 function getMascotIdleSpriteSrc(characterKey: string) {
   return `/api/site-mochi/sprite/${encodeURIComponent(characterKey)}/stand-neutral.png`;
-}
-
-function walletShort(value: string | null | undefined) {
-  if (!value) return "";
-  return value.length > 12 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
 }
 
 const DEFAULT_ICON_COMPONENTS: Record<Exclude<ConfigPanelTab, "mascot">, IconType> = {
@@ -257,7 +251,6 @@ function InternetFields({ compact = false }: { compact?: boolean } = {}) {
 function OnchainFields({ compact = false }: { compact?: boolean } = {}) {
   const { isSpanish } = useLanguage();
   const { config, updateConfig, freeSiteMessagesRemaining } = useSiteMochi();
-  const { isConnected, isConnecting, publicKey, connect, isAvailable } = useWalletSession();
   const hasOwnKey = Boolean(config.bitteApiKey.trim() && config.bitteAgentId.trim());
   const creditsLeft = freeSiteMessagesRemaining ?? 0;
 
@@ -328,40 +321,11 @@ function OnchainFields({ compact = false }: { compact?: boolean } = {}) {
           </p>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-foreground/85">
-          {isConnected
-            ? isSpanish
-              ? `Conectada: ${walletShort(publicKey)}`
-              : `Connected: ${walletShort(publicKey)}`
-            : isSpanish
-              ? "No hay wallet conectada."
-              : "No wallet connected."}
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-muted-foreground">
+          {isSpanish
+            ? "La conexión de wallet se movió al header del landing. Este panel ya no expone dirección ni botón de conexión."
+            : "Wallet connection moved to the landing header. This panel no longer exposes an address or connect button."}
         </div>
-
-        {!isConnected ? (
-          isAvailable ? (
-            <button
-              type="button"
-              onClick={() => void connect()}
-              disabled={isConnecting}
-              className="inline-flex items-center justify-center rounded-xl border border-border bg-background/60 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-foreground hover:bg-background/80 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isConnecting
-                ? isSpanish
-                  ? "Conectando..."
-                  : "Connecting..."
-                : isSpanish
-                  ? "Conectar wallet"
-                  : "Connect wallet"}
-            </button>
-          ) : (
-            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-muted-foreground">
-              {isSpanish
-                ? "No detectamos una wallet compatible con EVM en este navegador."
-                : "No compatible EVM wallet was detected in this browser."}
-            </div>
-          )
-        ) : null}
       </div>
 
       {!compact ? (
@@ -1920,7 +1884,7 @@ export function SiteMochiCompactConfigWindow({
                 href="/marketplace"
                 className="inline-flex items-center rounded-xl border border-border bg-background/60 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-foreground hover:bg-background/80"
               >
-                {isSpanish ? "Marketplace" : "Marketplace"}
+                {isSpanish ? "Conseguir nuevas apariencias" : "Get new skins"}
               </Link>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">

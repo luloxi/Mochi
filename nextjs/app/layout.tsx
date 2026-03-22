@@ -16,7 +16,6 @@ import { SiteMochiMascot } from "@/components/site-mochi-mascot";
 import { SiteMochiConfigPanel } from "@/components/site-mochi-config-panel";
 import { SiteMochiProvider } from "@/components/site-mochi-provider";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Header } from "@/components/header";
 import { createPageMetadata } from "@/lib/metadata";
 import type { Theme } from "@/components/theme-provider";
 
@@ -116,7 +115,6 @@ export default async function RootLayout({
           <WalletProvider>
             <ThemeProvider initialTheme={initialTheme}>
               <SiteMochiProvider>
-                <Header />
                 {children}
                 <SiteMochiConfigPanel />
                 <SiteMochiMascot />

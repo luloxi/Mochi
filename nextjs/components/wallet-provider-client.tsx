@@ -11,7 +11,8 @@ import {
   rabbyWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
-import { WagmiProvider, useAccount, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
+import { injected, metaMask } from "@wagmi/connectors";
+import { createConfig, WagmiProvider, useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
 import { http } from "viem";
 import {
   ACTIVE_CHAIN,
@@ -28,6 +29,7 @@ import { SMART_ACCOUNT_AVAILABLE } from "@/lib/smart-account";
 import type { SmartAccountHandle } from "@/lib/smart-account";
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim();
+const hasWalletConnectProjectId = Boolean(projectId);
 const walletGroups = [
   {
     groupName: "Avalanche",
@@ -60,16 +62,54 @@ function WalletSessionInner({
   registerOpenConnectModal,
 }: WalletSessionInnerProps) {
   const { address, isConnected, isConnecting, chain } = useAccount();
+  const { connectors, connectAsync } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient({ chainId: ACTIVE_CHAIN.id });
   const { openConnectModal } = useConnectModal();
   const [error, setError] = useState<string | null>(null);
 
+  const availableConnectors = useMemo(
+    () =>
+      connectors.filter((connector, index, list) => {
+        const firstIndex = list.findIndex((item) => item.id === connector.id && item.name === connector.name);
+        return firstIndex === index && connector.id !== "safe";
+      }),
+    [connectors],
+  );
+
+  const openInjectedWalletFallback = useCallback(async () => {
+    const preferredConnector =
+      availableConnectors.find((connector) => connector.name !== "Injected") ?? availableConnectors[0] ?? null;
+
+    if (!preferredConnector) {
+      const message = "No browser wallet found. Install MetaMask, Core, or another injected wallet.";
+      setError(message);
+      throw new Error(message);
+    }
+
+    try {
+      await connectAsync({ connector: preferredConnector, chainId: ACTIVE_CHAIN.id });
+    } catch (connectError) {
+      const message =
+        connectError instanceof Error ? connectError.message : "Failed to connect the browser wallet.";
+      setError(message);
+      throw connectError instanceof Error ? connectError : new Error(message);
+    }
+  }, [availableConnectors, connectAsync]);
+
   useEffect(() => {
-    registerOpenConnectModal(openConnectModal ?? null);
+    const openWalletConnector = openConnectModal
+      ? () => openConnectModal()
+      : availableConnectors.length > 0
+        ? () => {
+            void openInjectedWalletFallback();
+          }
+        : null;
+
+    registerOpenConnectModal(openWalletConnector);
     return () => registerOpenConnectModal(null);
-  }, [openConnectModal, registerOpenConnectModal]);
+  }, [availableConnectors.length, openConnectModal, openInjectedWalletFallback, registerOpenConnectModal]);
 
   const value = useMemo<WalletSessionState>(() => {
     // ── Smart account mode ────────────────────────────────────────────────
@@ -113,7 +153,7 @@ function WalletSessionInner({
 
     // ── EOA wallet mode (wagmi / RainbowKit) ─────────────────────────────
     return {
-      isAvailable: typeof window !== "undefined",
+      isAvailable: typeof window !== "undefined" && (Boolean(openConnectModal) || availableConnectors.length > 0),
       isDetecting: false,
       isConnected,
       isConnecting,
@@ -122,10 +162,11 @@ function WalletSessionInner({
       error,
       connect: async () => {
         setError(null);
-        if (!openConnectModal) {
-          throw new Error("No wallet connector available.");
+        if (openConnectModal) {
+          openConnectModal();
+          return;
         }
-        openConnectModal();
+        await openInjectedWalletFallback();
       },
       disconnect: () => {
         setError(null);
@@ -168,9 +209,11 @@ function WalletSessionInner({
     chain?.name,
     disconnect,
     error,
+    availableConnectors.length,
     isConnected,
     isConnecting,
     onClearSmartAccount,
+    openInjectedWalletFallback,
     openConnectModal,
     publicClient,
     walletClient,
@@ -186,16 +229,26 @@ function WalletSessionInner({
 export function WalletProviderClient({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
   const [wagmiConfig] = useState(() =>
-    getDefaultConfig({
-      appName: "Mochi",
-      projectId: projectId ?? "",
-      chains: [ACTIVE_CHAIN],
-      wallets: walletGroups,
-      ssr: false,
-      transports: {
-        [ACTIVE_CHAIN.id]: http(RPC_URL),
-      },
-    }),
+    hasWalletConnectProjectId
+      ? getDefaultConfig({
+          appName: "Mochi",
+          projectId: projectId ?? "",
+          chains: [ACTIVE_CHAIN],
+          wallets: walletGroups,
+          ssr: false,
+          transports: {
+            [ACTIVE_CHAIN.id]: http(RPC_URL),
+          },
+        })
+      : createConfig({
+          chains: [ACTIVE_CHAIN],
+          connectors: [metaMask(), injected()],
+          multiInjectedProviderDiscovery: true,
+          ssr: false,
+          transports: {
+            [ACTIVE_CHAIN.id]: http(RPC_URL),
+          },
+        }),
   );
 
   // Smart account state

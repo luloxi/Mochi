@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ImageIcon, UserRound } from "lucide-react";
-import { Footer } from "@/components/footer";
 import {
   formatMarketplaceTokenAmount,
   type TokenPreview,
@@ -307,7 +306,6 @@ export async function PublicWalletProfilePage({ wallet }: PublicWalletProfilePag
         </section>
       </div>
 
-      <Footer />
     </main>
   );
 }

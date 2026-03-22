@@ -1,6 +1,5 @@
 "use client";
 
-import { Footer } from "@/components/footer";
 import { useLanguage } from "@/components/language-provider";
 
 export default function PrivacyPage() {
@@ -119,7 +118,6 @@ export default function PrivacyPage() {
           </div>
         </div>
       </section>
-      <Footer />
     </main>
   );
 }

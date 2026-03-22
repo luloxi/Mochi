@@ -49,19 +49,36 @@ The Avalanche marketplace stack integrates with:
 
 ## Quick Start (Avalanche)
 
+For the "one script does everything" local flow, use:
+
 ```bash
 ./launch.sh
 ```
 
-Unified launcher for local, Fuji, and mainnet deployment.
+`launch.sh` is the root-level unified launcher. In `local` mode it opens the full stack:
 
-Direct root-level commands:
+- local chain via `pnpm chain`
+- frontend via `pnpm start`
+- contract deploy via `pnpm deploy:local`
+
+The deploy step writes contract addresses into `.deploy-env/local.env`, and `pnpm start` loads that file automatically so the frontend points at the freshly deployed contracts.
+
+If you want the non-interactive/manual equivalent, run these from the repo root:
 
 ```bash
 pnpm chain
 pnpm deploy:local
 pnpm start
 ```
+
+For public networks:
+
+- `pnpm deploy:testnet` deploys to Fuji
+- `pnpm deploy:testnet:publish` deploys to Fuji and syncs frontend contract envs to Vercel
+- `pnpm deploy:mainnet` deploys to mainnet
+- `pnpm deploy:mainnet:publish` deploys to mainnet and syncs frontend contract envs to Vercel
+
+Note: wallet connection in the web app also needs `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` set for `nextjs`.
 
 ## Quick Start (Runtimes)
 

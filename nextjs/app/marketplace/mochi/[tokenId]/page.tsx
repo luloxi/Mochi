@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { Footer } from "@/components/footer";
 import { MarketplaceNftDetailActions } from "@/components/marketplace-nft-detail-actions";
 import { MarketplaceNftOwnerActions } from "@/components/marketplace-nft-owner-actions";
 import { fetchAuctions, fetchRecentBidsForAuction } from "@/lib/auction";
@@ -468,8 +467,6 @@ export default async function MarketplaceMochiPage({ params }: Params) {
           openSwapListingsOfferingThis={openSwapListingsActionData}
         />
       </div>
-
-      <Footer />
     </main>
   );
 }

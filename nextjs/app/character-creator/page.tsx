@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { CharacterCreatorPageClient } from "@/components/character-creator-page-client";
-import { Footer } from "@/components/footer";
 import { createPageMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = createPageMetadata({
@@ -10,11 +9,16 @@ export const metadata: Metadata = createPageMetadata({
   path: "/character-creator",
 });
 
-export default function CharacterCreatorPage() {
+export default async function CharacterCreatorPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) || {};
+  const embedded = params.embedded === "1";
   return (
-    <main className="min-h-screen overflow-x-hidden neural-shell">
-      <CharacterCreatorPageClient />
-      <Footer />
+    <main className="site-window-page site-window-skin min-h-screen overflow-x-hidden neural-shell">
+      <CharacterCreatorPageClient embedded={embedded} />
     </main>
   );
 }

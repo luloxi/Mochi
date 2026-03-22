@@ -12,24 +12,20 @@ const CHROME_RELEASE_URL =
 const FIREFOX_RELEASE_URL =
   "https://github.com/shimeji-ai/Mochi/releases/latest/download/mochi-firefox-extension.zip";
 
-export function DownloadSection() {
+export function DownloadSection({ embedded = false }: { embedded?: boolean }) {
   const { isSpanish } = useLanguage();
+  const cardTitleClass =
+    "font-mono text-base font-semibold uppercase tracking-[0.18em] text-foreground sm:text-lg";
+  const cardClass = embedded
+    ? "neural-card rounded-2xl px-5 pb-5 pt-3 text-center"
+    : "neural-card rounded-2xl p-8 text-center";
 
   return (
-    <section id="download" className="py-20">
+    <section id="download" className={embedded ? "py-0" : "py-20"}>
       <div className="container mx-auto px-4">
-        <div className="text-center mb-12">
-          {/* <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 border border-white/10 mb-6 text-[var(--brand-accent)]">
-            <Download className="w-8 h-8" />
-          </div> */}
-          {/* <h2 className="text-5xl font-semibold my-4">
-            {isSpanish ? "Descargar Mochi" : "Download Mochi"}
-          </h2> */}
-          
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <div className="neural-card rounded-2xl p-8 text-center">
-            <h3 className="text-2xl font-semibold mb-4">
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${embedded ? "gap-4" : "gap-8"}`}>
+          <div className={cardClass}>
+            <h3 className={`${cardTitleClass} mb-3`}>
               {isSpanish ? "Extensión de Navegador" : "Browser Extension"}
             </h3>
             <div className="text-left mb-6 space-y-5">
@@ -68,19 +64,14 @@ export function DownloadSection() {
             </div>
           </div>
 
-          <div className="neural-card rounded-2xl p-8 text-center">
-            <h3 className="text-2xl font-semibold mb-4">{isSpanish ? "Versión Desktop" : "Desktop Version"}</h3>
+          <div className={cardClass}>
+            <h3 className={`${cardTitleClass} mb-3`}>{isSpanish ? "Versión Desktop" : "Desktop Version"}</h3>
            
             <div className="text-left mb-6 space-y-5">
               <div>
                 <p className="mb-2 text-muted-foreground font-medium">
                   {isSpanish ? "Windows Portable" : "Windows Portable"}
                 </p>
-                <div className="text-sm text-muted-foreground">
-                  {isSpanish
-                    ? "Ejecutable portable en .exe. Descargá y ejecutalo directamente. Si Windows pregunta por seguridad, permite la ejecución."
-                    : "Portable .exe build. Download it and run it directly. If Windows shows a security prompt, allow execution."}
-                </div>
                 <div className="mt-3">
                   <Button asChild className="neural-button w-full">
                     <a href={WIN_RELEASE_URL} target="_blank" rel="noopener noreferrer">
@@ -91,11 +82,6 @@ export function DownloadSection() {
               </div>
               <div>
                 <p className="mb-2 text-muted-foreground font-medium">{isSpanish ? "macOS" : "macOS"}</p>
-                <div className="text-sm text-muted-foreground">
-                  {isSpanish
-                    ? "La descarga para macOS todavía no está publicada desde este pipeline. Cuando haya un artefacto firmado y probado, aparecerá acá."
-                    : "The macOS download is not published from this pipeline yet. It will appear here once a tested macOS artifact is available."}
-                </div>
                 <div className="mt-3">
                   <Button className="neural-button w-full" disabled>
                     {isSpanish ? "macOS (próximamente)" : "macOS (coming soon)"}
@@ -122,8 +108,8 @@ export function DownloadSection() {
             </div>
           </div>
 
-          <div className="neural-card rounded-2xl p-8 text-center">
-            <h3 className="text-2xl font-semibold mb-4">{isSpanish ? "Mobile" : "Mobile"}</h3>
+          <div className={cardClass}>
+            <h3 className={`${cardTitleClass} mb-3`}>{isSpanish ? "Mobile" : "Mobile"}</h3>
             <div className="text-left mb-6 space-y-5">
               <div>
                 <p className="mb-2 text-muted-foreground font-medium">Android</p>

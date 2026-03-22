@@ -39,7 +39,7 @@ type CreateMintPackageRequest = Parameters<typeof MarketplaceHubStudioSellTab>[0
   ? T
   : never;
 
-export function CharacterCreatorPageClient() {
+export function CharacterCreatorPageClient({ embedded = false }: { embedded?: boolean }) {
   const { isSpanish } = useLanguage();
   const { publicKey, signTransaction } = useWalletSession();
   const t = (en: string, es: string) => (isSpanish ? es : en);
@@ -47,6 +47,7 @@ export function CharacterCreatorPageClient() {
   const [studio, setStudio] = useState<MarketplaceMyStudioResponse>(EMPTY_STUDIO);
   const [txBusy, setTxBusy] = useState(false);
   const [txMessage, setTxMessage] = useState("");
+  const [creatorStage, setCreatorStage] = useState<"build" | "publish">("build");
 
   async function loadStudio(wallet: string) {
     try {
@@ -138,6 +139,7 @@ export function CharacterCreatorPageClient() {
             ? t("NFT minted and sent to auction successfully.", "NFT minteado y enviado a subasta correctamente.")
             : t("NFT minted successfully.", "NFT minteado correctamente."),
       );
+      setCreatorStage("build");
     } catch (error) {
       setTxMessage(error instanceof Error ? error.message : "Failed to mint NFT.");
     } finally {
@@ -147,7 +149,7 @@ export function CharacterCreatorPageClient() {
 
   return (
     <>
-      <section className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-8 pt-28 md:px-6 lg:px-8">
+      <section className={`mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-8 ${embedded ? "pt-0" : "pt-6 md:pt-8"} md:px-6 lg:px-8`}>
         <MarketplaceHubStudioSellTab
           t={t}
           studio={studio}
@@ -156,6 +158,9 @@ export function CharacterCreatorPageClient() {
           publicKey={publicKey}
           showCreatePanel
           showTradePanel={false}
+          creatorStage={creatorStage}
+          onOpenPublishStage={() => setCreatorStage("publish")}
+          onBackToCreatorStage={() => setCreatorStage("build")}
           onCreateListing={async () => {}}
           onCreateAuction={async () => {}}
           onCreateNftPackage={(request) => void handleCreateNftPackage(request)}

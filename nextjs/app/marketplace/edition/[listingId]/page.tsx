@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { Footer } from "@/components/footer";
 import { MarketplaceEditionDetailActions } from "@/components/marketplace-edition-detail-actions";
 import { fetchEditionListings } from "@/lib/marketplace";
 import { fetchEditionTokenById } from "@/lib/nft-read";
@@ -66,8 +65,6 @@ export default async function MarketplaceEditionPage({ params }: Params) {
           />
         </div>
       </section>
-
-      <Footer />
     </main>
   );
 }

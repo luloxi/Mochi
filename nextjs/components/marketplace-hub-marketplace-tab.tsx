@@ -65,7 +65,7 @@ export function MarketplaceHubMarketplaceTab({
   publicKey,
 }: MarketplaceHubMarketplaceTabProps) {
   return (
-    <section className="config-contrast-panel rounded-3xl border border-border bg-white/10 p-4 md:p-6">
+    <section className="site-window-surface config-contrast-panel rounded-3xl border border-border bg-white/10 p-4 md:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
@@ -200,12 +200,6 @@ export function MarketplaceHubMarketplaceTab({
                         ? `${t("Mochi NFT", "Mochi NFT")} #${liveAuctionItem.tokenId}`
                         : `${t("Auction", "Subasta")} #${liveAuctionItem.auction?.auctionId ?? "?"}`)}
                   </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {t(
-                      "Bid from this panel or open the full auction page for more detail.",
-                      "Oferta desde este panel o abre la pagina completa de subasta para mas detalle.",
-                    )}
-                  </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
                     <div className="rounded-xl border border-border bg-white/5 p-3">
                       <p className="text-xs text-muted-foreground">{t("Current bid", "Oferta actual")}</p>

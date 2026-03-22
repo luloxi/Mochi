@@ -4,8 +4,6 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Wallet } from "lucide-react";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
-import { Footer } from "@/components/footer";
 import { useLanguage } from "@/components/language-provider";
 import { useWalletSession } from "@/components/wallet-provider";
 
@@ -67,15 +65,17 @@ export default function MyProfilePage() {
                 )
               )}
             </p>
-            <ConnectWalletButton />
+            <p className="text-xs text-muted-foreground">
+              {isSpanish
+                ? "La conexión de wallet solo está disponible desde el header del landing."
+                : "Wallet connection is only available from the landing header."}
+            </p>
             <Link href="/marketplace" className="mt-5 text-sm underline text-muted-foreground hover:text-foreground">
               {isSpanish ? "Ir al marketplace" : "Go to marketplace"}
             </Link>
           </div>
         </div>
       </section>
-
-      <Footer />
     </main>
   );
 }

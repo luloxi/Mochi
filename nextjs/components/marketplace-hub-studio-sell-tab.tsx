@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { DragEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, Check, Gavel, ImageIcon, Loader2, Tag, Upload, X } from "lucide-react";
+import { ArrowLeftRight, Check, Gavel, ImageIcon, Loader2, Pause, Play, Tag, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { HubTranslateFn, TokenPreview } from "@/components/marketplace-hub-shared";
 import { formatMarketplaceTokenAmount, walletShort } from "@/components/marketplace-hub-shared";
@@ -41,6 +41,9 @@ type Props = {
   publicKey: string | null;
   showCreatePanel?: boolean;
   showTradePanel?: boolean;
+  creatorStage?: "build" | "publish";
+  onOpenPublishStage?: () => void;
+  onBackToCreatorStage?: () => void;
   onCreateListing: (tokenId: number, price: string, currency: "Avax" | "Usdc") => void | Promise<void>;
   onCreateAuction: (tokenId: number, price: string, currency: "Avax" | "Usdc", durationHours: string) => void | Promise<void>;
   onCreateNftPackage: (request: CreateMintPackageRequest) => void | Promise<void>;
@@ -74,14 +77,23 @@ function spriteRelativePath(file: File) {
   return ((file as RelativeFile).webkitRelativePath || file.name || "sprite.png").trim();
 }
 
-function buildSpritePreviewMap(files: File[]) {
+function buildNamedSpritePreviewMap(filesByName: Record<string, File>) {
   const previewMap: Record<string, string> = {};
-  for (const file of files) {
-    const fileName = normalizeSpriteFileName(spriteRelativePath(file) || file.name);
+  for (const [fileName, file] of Object.entries(filesByName)) {
     if (!fileName || previewMap[fileName]) continue;
     previewMap[fileName] = URL.createObjectURL(file);
   }
   return previewMap;
+}
+
+function buildNamedSpriteFileMap(folderFiles: File[], assignedFiles: Record<string, File>) {
+  const namedFiles: Record<string, File> = {};
+  for (const file of folderFiles) {
+    const fileName = normalizeSpriteFileName(spriteRelativePath(file) || file.name);
+    if (!fileName || namedFiles[fileName]) continue;
+    namedFiles[fileName] = file;
+  }
+  return { ...namedFiles, ...assignedFiles };
 }
 
 function mergeSpriteFiles(existing: File[], incoming: File[]) {
@@ -111,6 +123,9 @@ export function MarketplaceHubStudioSellTab({
   publicKey,
   showCreatePanel = true,
   showTradePanel = true,
+  creatorStage = "build",
+  onOpenPublishStage,
+  onBackToCreatorStage,
   onCreateListing,
   onCreateAuction,
   onCreateNftPackage,
@@ -151,9 +166,11 @@ export function MarketplaceHubStudioSellTab({
   const [mintCoverImage, setMintCoverImage] = useState<File | null>(null);
   const [mintCoverPreviewUrl, setMintCoverPreviewUrl] = useState<string | null>(null);
   const [mintSpriteFiles, setMintSpriteFiles] = useState<File[]>([]);
+  const [mintAssignedSpriteFiles, setMintAssignedSpriteFiles] = useState<Record<string, File>>({});
   const [mintSpritePreviewMap, setMintSpritePreviewMap] = useState<Record<string, string>>({});
   const [previewAnimation, setPreviewAnimation] = useState<PreviewAnimationKey>("walk");
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
+  const [previewPaused, setPreviewPaused] = useState(false);
   const [dragTargetSpriteName, setDragTargetSpriteName] = useState<string | null>(null);
   const [mintUploadBusy, setMintUploadBusy] = useState(false);
   const [mintFormError, setMintFormError] = useState("");
@@ -177,25 +194,26 @@ export function MarketplaceHubStudioSellTab({
   }, [mintCoverImage]);
 
   useEffect(() => {
-    const nextPreviewMap = buildSpritePreviewMap(mintSpriteFiles);
+    const nextPreviewMap = buildNamedSpritePreviewMap(buildNamedSpriteFileMap(mintSpriteFiles, mintAssignedSpriteFiles));
     setMintSpritePreviewMap(nextPreviewMap);
     return () => {
       Object.values(nextPreviewMap).forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [mintSpriteFiles]);
+  }, [mintAssignedSpriteFiles, mintSpriteFiles]);
 
   useEffect(() => {
     setPreviewFrameIndex(0);
-  }, [previewAnimation, mintSpriteFiles.length]);
+  }, [previewAnimation, mintSpriteFiles.length, Object.keys(mintAssignedSpriteFiles).length]);
 
   useEffect(() => {
+    if (previewPaused) return;
     const frames = PREVIEW_ANIMATION_SETS[previewAnimation];
     if (frames.length <= 1) return;
     const timer = window.setInterval(() => {
       setPreviewFrameIndex((current) => (current + 1) % frames.length);
     }, 420);
     return () => window.clearInterval(timer);
-  }, [previewAnimation]);
+  }, [previewAnimation, previewPaused]);
 
   const regularNfts = studio.ownedNfts.filter((n) => !n.isCommissionEgg);
   const allNfts = studio.ownedNfts;
@@ -206,9 +224,12 @@ export function MarketplaceHubStudioSellTab({
 
   const nftsForAction = listAction === "swap" ? allNfts : regularNfts;
   const currentSelectedId = listAction === "swap" ? swapOfferedTokenId : selectedTokenId;
-  const spritePaths = mintSpriteFiles.map((file) => spriteRelativePath(file) || file.name);
+  const namedMintSpriteFiles = buildNamedSpriteFileMap(mintSpriteFiles, mintAssignedSpriteFiles);
+  const spritePaths = Object.keys(namedMintSpriteFiles);
   const missingRequiredSprites = findMissingRequiredSprites(spritePaths);
   const hasRequiredSpriteSet = missingRequiredSprites.length === 0;
+  const uploadedSpritesCount = spritePaths.length;
+  const loadedRequiredSpritesCount = REQUIRED_MOCHI_SPRITES.length - missingRequiredSprites.length;
   const previewFrames = PREVIEW_ANIMATION_SETS[previewAnimation];
   const activePreviewFrameSequenceIndex = previewFrameIndex % previewFrames.length;
   const activePreviewSpriteName = previewFrames[activePreviewFrameSequenceIndex];
@@ -218,6 +239,8 @@ export function MarketplaceHubStudioSellTab({
     Boolean(mintDescription.trim()) &&
     Boolean(mintCoverImage) &&
     hasRequiredSpriteSet;
+  const isCreatorBuildStage = creatorStage === "build";
+  const isCreatorPublishStage = creatorStage === "publish";
 
   function handleNftClick(tokenId: string) {
     if (listAction === "swap") {
@@ -229,11 +252,10 @@ export function MarketplaceHubStudioSellTab({
 
   function assignSpriteFile(targetFileName: string, selected: File | null | undefined) {
     if (!selected) return;
-    const renamed = new File([selected], targetFileName, {
-      type: selected.type,
-      lastModified: selected.lastModified,
-    });
-    setMintSpriteFiles((current) => mergeSpriteFiles(current, [renamed]));
+    setMintAssignedSpriteFiles((current) => ({
+      ...current,
+      [targetFileName]: selected,
+    }));
   }
 
   function handleSpriteTileDrop(fileName: string, event: DragEvent<HTMLLabelElement>) {
@@ -277,7 +299,7 @@ export function MarketplaceHubStudioSellTab({
       setMintFormError(t("Description is required.", "La descripción es obligatoria."));
       return;
     }
-    if (mintSpriteFiles.length === 0) {
+    if (spritePaths.length === 0) {
       setMintFormError(
         t(
           "Sprite files are required for animated Mochi NFTs.",
@@ -324,10 +346,9 @@ export function MarketplaceHubStudioSellTab({
       formData.append("attributes", JSON.stringify(attributes));
       formData.append("coverImage", mintCoverImage);
 
-      for (const file of mintSpriteFiles) {
-        const relativePath = ((file as RelativeFile).webkitRelativePath || file.name || "sprite.png").trim();
-        formData.append("spriteFiles", file, relativePath);
-        formData.append("spritePaths", relativePath);
+      for (const [targetFileName, file] of Object.entries(namedMintSpriteFiles)) {
+        formData.append("spriteFiles", file, targetFileName);
+        formData.append("spritePaths", targetFileName);
       }
 
       const response = await fetch("/api/marketplace/mint-package", {
@@ -364,6 +385,7 @@ export function MarketplaceHubStudioSellTab({
       setMintAuctionDurationHours("24");
       setMintCoverImage(null);
       setMintSpriteFiles([]);
+      setMintAssignedSpriteFiles({});
     } catch (error) {
       setMintFormError(error instanceof Error ? error.message : "Failed to create NFT package.");
     } finally {
@@ -399,183 +421,94 @@ export function MarketplaceHubStudioSellTab({
   }
 
   return (
-    <div className="config-contrast-panel space-y-4">
+    <div className="site-window-skin config-contrast-panel space-y-1">
       {showCreatePanel ? (
-        <div id="create-character-app" className="creator-upload-panel scroll-mt-28 rounded-2xl border border-cyan-300/15 bg-cyan-400/[0.03] p-4 md:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">{t("Character Creator", "Creador de personajes")}</h3>
-              <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-                {t(
-                  "Load art locally, validate the runtime sprite set, preview the animation, and only push to IPFS when you're ready to mint.",
-                  "Cargá arte en local, validá el set de sprites del runtime, previsualizá la animación y recién hacé push a IPFS cuando quieras mintear.",
-                )}
-              </p>
-            </div>
-            <Link
-              href={ANIMATION_GUIDE_PATH}
-              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-xs font-medium text-foreground transition-all hover:border-cyan-400/35 hover:bg-cyan-400/20"
-            >
-              {t("Animation guide", "Guía de animaciones")}
-            </Link>
-          </div>
-
-          {/* ── PRIMARY: Animation preview + sprite loading ── */}
-          <div className="mt-5 grid gap-5 xl:grid-cols-[0.65fr_1.35fr]">
-            {/* Left: sprites */}
-            <div className="space-y-4">
-              {/* Folder import */}
-              <div className="neural-card rounded-2xl border border-cyan-300/15 p-4">
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  {t("Sprites", "Sprites")}
-                </p>
-                <label className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
-                  mintSpriteFiles.length > 0
-                    ? "border-cyan-300/30 bg-cyan-400/10 text-foreground hover:bg-cyan-400/15"
-                    : "border-border bg-white/5 text-muted-foreground hover:border-white/20 hover:bg-white/10"
-                }`}>
-                  <Upload className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    {mintSpriteFiles.length > 0
-                      ? t(`${mintSpriteFiles.length} files loaded`, `${mintSpriteFiles.length} archivos cargados`)
-                      : t("Import sprite folder", "Importar carpeta de sprites")}
-                  </span>
-                  <input
-                    ref={spriteFolderInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => {
-                      setMintSpriteFiles((current) => mergeSpriteFiles(current, Array.from(event.target.files || [])));
+        <div id="create-character-app" className="scroll-mt-28 space-y-1">
+          {isCreatorBuildStage ? (
+          <div className="space-y-1">
+            <div className="neural-card rounded-2xl border border-cyan-300/15 p-1">
+              <div className="grid items-center gap-1 lg:grid-cols-[120px_minmax(0,1fr)_220px]">
+                <div className="flex h-full flex-col justify-start gap-1 rounded-2xl border border-white/10 bg-white/[0.03] p-1">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPaused((p) => !p)}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+                      title={previewPaused ? t("Play", "Reproducir") : t("Pause", "Pausar")}
+                    >
+                      {previewPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+                    </button>
+                    <div className="flex items-center gap-1.5 rounded-full border border-emerald-700 bg-emerald-600 px-2.5 py-1 shadow-sm">
+                      {previewPaused ? (
+                        <>
+                          <Pause className="h-2.5 w-2.5 text-white" />
+                          <span className="text-[10px] font-semibold text-white">{t("paused", "pausado")}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white">live</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <select
+                    value={previewAnimation}
+                    onChange={(e) => setPreviewAnimation(e.target.value as PreviewAnimationKey)}
+                    className={selectClassName}
+                    style={selectStyle}
+                  >
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="walk">{t("Walk", "Caminar")}</option>
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="jump">{t("Jump", "Saltar")}</option>
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="drag">{t("Drag", "Arrastrar")}</option>
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="wall">{t("Wall", "Pared")}</option>
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="ceiling">{t("Ceiling", "Techo")}</option>
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="idle">{t("Idle", "Idle")}</option>
+                    <option className={selectOptionClassName} style={selectOptionStyle} value="usingComputer">{t("Using computer", "Usando la PC")}</option>
+                  </select>
+                </div>
+                <div className="relative flex min-h-[320px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                  <img
+                    src={activePreviewSpriteUrl ?? `/mochi-original/${activePreviewSpriteName}`}
+                    alt={activePreviewSpriteName}
+                    className="h-40 w-40 object-contain drop-shadow-[0_18px_30px_rgba(0,0,0,0.3)]"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (!img.src.endsWith("/mochi-original/stand-neutral.png")) {
+                        img.src = "/mochi-original/stand-neutral.png";
+                      }
                     }}
                   />
-                </label>
-
-                {/* Progress bar */}
-                <div className="mt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-muted-foreground">{t("Required sprites", "Sprites requeridos")}</span>
-                    <span
-                      className={`creator-sprite-progress-count font-mono text-[11px] font-semibold ${
-                        hasRequiredSpriteSet ? "creator-sprite-progress-count-ready" : "creator-sprite-progress-count-missing"
-                      }`}
-                    >
-                      {REQUIRED_MOCHI_SPRITES.length - missingRequiredSprites.length}/{REQUIRED_MOCHI_SPRITES.length}
+                  <div className="absolute bottom-3 left-0 right-0 text-center">
+                    <span className="font-mono text-[10px] text-muted-foreground/60">
+                      {activePreviewSpriteName.replace(".png", "").replace(/-/g, " ")}
                     </span>
                   </div>
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${hasRequiredSpriteSet ? "bg-emerald-400" : "bg-amber-400"}`}
-                      style={{ width: `${((REQUIRED_MOCHI_SPRITES.length - missingRequiredSprites.length) / REQUIRED_MOCHI_SPRITES.length) * 100}%` }}
-                    />
-                  </div>
-                  {hasRequiredSpriteSet ? (
-                    <p className="creator-sprite-progress-note creator-sprite-progress-note-ready mt-1.5 text-[10px]">
-                      {t("All sprites loaded!", "¡Todos los sprites cargados!")}
-                    </p>
-                  ) : (
-                    <p className="creator-sprite-progress-note creator-sprite-progress-note-missing mt-1.5 text-[10px]">
-                      {t(`${missingRequiredSprites.length} missing`, `Faltan ${missingRequiredSprites.length}`)}
-                    </p>
-                  )}
                 </div>
 
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {t("Files stay local until you mint.", "Los archivos quedan locales hasta el mint.")}
-                </p>
-              </div>
-
-            </div>
-
-            {/* Right: live animation preview (large, prominent) */}
-            <div className="neural-card rounded-2xl border border-cyan-300/15 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-semibold text-foreground">{t("Live animation preview", "Preview de animación en vivo")}</h4>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {t("Test how your sprites animate before minting.", "Probá cómo animan tus sprites antes de mintear.")}
+                <div className="flex max-h-[320px] flex-col gap-2 overflow-auto rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="creator-frame-section-title mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    {t("Upload frames for this animation", "Subir frames de esta animación")}
                   </p>
-                </div>
-                <select
-                  value={previewAnimation}
-                  onChange={(e) => setPreviewAnimation(e.target.value as PreviewAnimationKey)}
-                  className={selectClassName}
-                  style={selectStyle}
-                >
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="walk">{t("Walk", "Caminar")}</option>
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="jump">{t("Jump", "Saltar")}</option>
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="drag">{t("Drag", "Arrastrar")}</option>
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="wall">{t("Wall", "Pared")}</option>
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="ceiling">{t("Ceiling", "Techo")}</option>
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="idle">{t("Idle", "Idle")}</option>
-                  <option className={selectOptionClassName} style={selectOptionStyle} value="usingComputer">{t("Using computer", "Usando la PC")}</option>
-                </select>
-              </div>
-
-              <div className="relative mt-4 flex min-h-[320px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-                {activePreviewSpriteUrl ? (
-                  <>
-                    <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-                      <span className="text-[10px] font-medium text-cyan-200/80">live</span>
-                    </div>
-                    <img
-                      src={activePreviewSpriteUrl}
-                      alt={activePreviewSpriteName}
-                      className="h-52 w-52 object-contain drop-shadow-[0_18px_30px_rgba(0,0,0,0.3)]"
-                    />
-                  </>
-                ) : (
-                  <div className="text-center text-xs text-muted-foreground">
-                    <div className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
-                      <ImageIcon className="h-8 w-8 opacity-25" />
-                    </div>
-                    <p>{t("Import your sprites to see them animate here.", "Importá tus sprites para verlos animar acá.")}</p>
-                    <p className="mt-1 font-mono text-[10px] text-muted-foreground/50">{activePreviewSpriteName}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {previewFrames.map((frame, index) => (
-                  <span
-                    key={`${previewAnimation}-${frame}-${index}`}
-                    className={`rounded-full border px-2.5 py-1 text-[10px] transition-colors ${
-                      index === activePreviewFrameSequenceIndex
-                        ? "border-cyan-300/30 bg-cyan-400/20 text-cyan-100"
-                        : "border-white/10 bg-white/[0.04] text-muted-foreground"
-                    }`}
-                  >
-                    {frame.replace(".png", "").replace(/-/g, " ")}
-                  </span>
-                ))}
-              </div>
-
-              {/* Upload frames for this animation */}
-              <div className="mt-4 border-t border-white/10 pt-4">
-                <p className="creator-frame-section-title mb-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  {t("Upload frames for this animation", "Subir frames de esta animación")}
-                </p>
-                <p className="mb-3 text-[11px] text-muted-foreground">
-                  {t("Click a tile or drop an image onto it.", "Hacé click en un cuadro o soltá una imagen encima.")}
-                </p>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {Array.from(new Set(previewFrames)).map((fileName) => {
                     const loaded = Boolean(mintSpritePreviewMap[fileName]);
                     const previewUrl = mintSpritePreviewMap[fileName];
                     const label = fileName.replace(".png", "").replace(/-/g, " ");
                     const isDragTarget = dragTargetSpriteName === fileName;
+                    const isActiveFrame = fileName === activePreviewSpriteName;
                     return (
                       <label
                         key={`anim-upload-${fileName}`}
-                        className={`creator-frame-upload-item flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 p-2 text-center transition-all ${
+                        className={`creator-frame-upload-item flex cursor-pointer items-center gap-2 rounded-xl border-2 p-2 text-left transition-all ${
                           isDragTarget
                             ? "creator-frame-upload-item-active scale-[1.02]"
                             : ""
                         } ${
-                          loaded
-                            ? "border-emerald-300/35 bg-emerald-400/[0.08] hover:bg-emerald-400/12"
-                            : "border-amber-300/35 bg-amber-400/[0.06] hover:bg-amber-400/12"
+                          isActiveFrame
+                            ? "border-cyan-300/45 bg-cyan-400/[0.16] shadow-[0_0_0_1px_rgba(103,232,249,0.16)]"
+                            : loaded
+                              ? "border-emerald-300/35 bg-emerald-400/[0.08] hover:bg-emerald-400/12"
+                              : "border-amber-300/35 bg-amber-400/[0.06] hover:bg-amber-400/12"
                         }`}
                         onDragEnter={() => setDragTargetSpriteName(fileName)}
                         onDragOver={(event) => {
@@ -589,7 +522,7 @@ export function MarketplaceHubStudioSellTab({
                         }}
                         onDrop={(event) => handleSpriteTileDrop(fileName, event)}
                       >
-                        <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
+                        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
                           {previewUrl ? (
                             <img src={previewUrl} alt={fileName} className="h-full w-full object-contain" />
                           ) : (
@@ -601,9 +534,17 @@ export function MarketplaceHubStudioSellTab({
                             </div>
                           )}
                         </div>
-                        <span className={`creator-frame-upload-label line-clamp-2 text-[10px] capitalize leading-tight ${loaded ? "text-foreground/70" : "text-amber-200/60"}`}>
-                          {label}
-                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className={`creator-frame-upload-label line-clamp-2 block text-[10px] capitalize leading-tight ${
+                            isActiveFrame
+                              ? "text-cyan-100"
+                              : loaded
+                                ? "text-foreground/70"
+                                : "text-amber-200/60"
+                          }`}>
+                            {label}
+                          </span>
+                        </div>
                         <input
                           type="file"
                           accept="image/*"
@@ -618,18 +559,109 @@ export function MarketplaceHubStudioSellTab({
                 </div>
               </div>
             </div>
+
+            <div className="neural-card rounded-2xl border border-cyan-300/15 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    {t("Sprites", "Sprites")}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-foreground">
+                      {t(`Required ${loadedRequiredSpritesCount}/${REQUIRED_MOCHI_SPRITES.length}`, `Requeridos ${loadedRequiredSpritesCount}/${REQUIRED_MOCHI_SPRITES.length}`)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <label className={`inline-flex cursor-pointer items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
+                      mintSpriteFiles.length > 0
+                        ? "border-cyan-300/30 bg-cyan-400/10 text-foreground hover:bg-cyan-400/15"
+                        : "border-border bg-white/5 text-muted-foreground hover:border-white/20 hover:bg-white/10"
+                    }`}>
+                      <Upload className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        {mintSpriteFiles.length > 0
+                          ? t("Import more sprites", "Importar más sprites")
+                          : t("Import sprite folder", "Importar carpeta de sprites")}
+                      </span>
+                      <input
+                        ref={spriteFolderInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                          setMintSpriteFiles((current) => mergeSpriteFiles(current, Array.from(event.target.files || [])));
+                        }}
+                      />
+                    </label>
+                    <div className="text-xs text-muted-foreground">
+                      {t("Need the ZIP or sprite names?", "¿Necesitás el ZIP o los nombres?")}{" "}
+                      <Link href={ANIMATION_GUIDE_PATH} className="text-foreground underline underline-offset-4">
+                        {t("Open animation guide", "Abrir guía de animación")}
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div
+                    title={
+                      hasRequiredSpriteSet
+                        ? ""
+                        : t(
+                            "All sprites must be loaded before publishing.",
+                            "Deben estar todos los sprites cargados para poder publicarlo.",
+                          )
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!hasRequiredSpriteSet) return;
+                        onOpenPublishStage?.();
+                      }}
+                      disabled={!hasRequiredSpriteSet}
+                      className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                        hasRequiredSpriteSet
+                          ? "border-white/10 bg-white/5 text-foreground hover:bg-white/10"
+                          : "cursor-not-allowed border-white/10 bg-white/[0.03] text-muted-foreground/60"
+                      }`}
+                    >
+                      {t("Go to publish", "Ir a publicar")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${hasRequiredSpriteSet ? "bg-emerald-400" : "bg-amber-400"}`}
+                  style={{ width: `${(loadedRequiredSpritesCount / REQUIRED_MOCHI_SPRITES.length) * 100}%` }}
+                />
+              </div>
+            </div>
           </div>
+          ) : null}
 
-          {/* ── SECONDARY: Details, cover, publish & mint ── */}
-          <div className="mt-8 border-t border-white/10 pt-8">
-            <p className="mb-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {t("When you're happy with the animation — fill in the details and mint", "Cuando estés satisfecho con la animación — completá los detalles y minteá")}
-            </p>
-
+          {isCreatorPublishStage ? (
+          <div className="mt-2 border-t border-white/10 pt-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  {t("Publish character", "Publicar personaje")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("Complete metadata and sale settings, or go back to keep editing sprites.", "Completá metadatos y venta, o volvé atrás para seguir editando sprites.")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onBackToCreatorStage?.()}
+                className="rounded-none border border-border bg-background/60 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground hover:bg-background/80"
+              >
+                {t("Back", "Atrás")}
+              </button>
+            </div>
             <div className="grid gap-5 xl:grid-cols-[1fr_0.7fr]">
-              {/* Left: cover + metadata */}
               <div className="space-y-4">
-                {/* Cover image */}
                 <div className="neural-card rounded-2xl border border-white/10 p-4">
                   <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {t("Cover image", "Imagen de portada")}
@@ -659,7 +691,6 @@ export function MarketplaceHubStudioSellTab({
                   )}
                 </div>
 
-                {/* Metadata */}
                 <div className="neural-card rounded-2xl border border-white/10 p-4">
                   <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {t("Metadata", "Metadatos")}
@@ -743,69 +774,67 @@ export function MarketplaceHubStudioSellTab({
                 </div>
               </div>
 
-              {/* Right: publish options + readiness + mint */}
               <div className="space-y-4">
-                <div className="neural-card rounded-2xl border border-white/10 p-4">
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    {t("After minting", "Después de mintear")}
-                  </p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Action", "Acción")}</label>
-                      <select
-                        value={mintListMode}
-                        onChange={(e) => setMintListMode(e.target.value as MintListMode)}
-                        className={selectClassName}
-                        style={selectStyle}
-                      >
-                        <option className={selectOptionClassName} style={selectOptionStyle} value="fixed_price">{t("Auto-list fixed price", "Publicar a precio fijo")}</option>
-                        <option className={selectOptionClassName} style={selectOptionStyle} value="auction">{t("Auto-start auction", "Iniciar subasta")}</option>
-                        <option className={selectOptionClassName} style={selectOptionStyle} value="none">{t("Mint only", "Solo mintear")}</option>
-                      </select>
-                    </div>
-                    {mintListMode === "fixed_price" ? (
-                      <div className="grid gap-3 grid-cols-2">
-                        <div>
-                          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Price", "Precio")}</label>
-                          <input type="number" value={mintListPrice} onChange={(e) => setMintListPrice(e.target.value)} min="0" placeholder="0"
-                            className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/30" />
-                        </div>
-                        <div>
-                          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Currency", "Moneda")}</label>
-                          <select value={mintListCurrency} onChange={(e) => setMintListCurrency(e.target.value as "Avax" | "Usdc")} className={selectClassName} style={selectStyle}>
-                            <option className={selectOptionClassName} style={selectOptionStyle} value="Avax">AVAX</option>
-                            <option className={selectOptionClassName} style={selectOptionStyle} value="Usdc">USDC</option>
-                          </select>
-                        </div>
+                  <div className="neural-card rounded-2xl border border-white/10 p-4">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      {t("After minting", "Después de mintear")}
+                    </p>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Action", "Acción")}</label>
+                        <select
+                          value={mintListMode}
+                          onChange={(e) => setMintListMode(e.target.value as MintListMode)}
+                          className={selectClassName}
+                          style={selectStyle}
+                        >
+                          <option className={selectOptionClassName} style={selectOptionStyle} value="fixed_price">{t("Auto-list fixed price", "Publicar a precio fijo")}</option>
+                          <option className={selectOptionClassName} style={selectOptionStyle} value="auction">{t("Auto-start auction", "Iniciar subasta")}</option>
+                          <option className={selectOptionClassName} style={selectOptionStyle} value="none">{t("Mint only", "Solo mintear")}</option>
+                        </select>
                       </div>
-                    ) : null}
-                    {mintListMode === "auction" ? (
-                      <div className="space-y-3">
-                        <div className="grid gap-3 grid-cols-2">
+                      {mintListMode === "fixed_price" ? (
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Start price", "Precio inicial")}</label>
-                            <input type="number" value={mintAuctionPrice} onChange={(e) => setMintAuctionPrice(e.target.value)} min="0" placeholder="0"
+                            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Price", "Precio")}</label>
+                            <input type="number" value={mintListPrice} onChange={(e) => setMintListPrice(e.target.value)} min="0" placeholder="0"
                               className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/30" />
                           </div>
                           <div>
                             <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Currency", "Moneda")}</label>
-                            <select value={mintAuctionCurrency} onChange={(e) => setMintAuctionCurrency(e.target.value as "Avax" | "Usdc")} className={selectClassName} style={selectStyle}>
+                            <select value={mintListCurrency} onChange={(e) => setMintListCurrency(e.target.value as "Avax" | "Usdc")} className={selectClassName} style={selectStyle}>
                               <option className={selectOptionClassName} style={selectOptionStyle} value="Avax">AVAX</option>
                               <option className={selectOptionClassName} style={selectOptionStyle} value="Usdc">USDC</option>
                             </select>
                           </div>
                         </div>
-                        <div>
-                          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Duration (hours)", "Duración (horas)")}</label>
-                          <input type="number" value={mintAuctionDurationHours} onChange={(e) => setMintAuctionDurationHours(e.target.value)} min="1" placeholder="24"
-                            className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/30" />
+                      ) : null}
+                      {mintListMode === "auction" ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Start price", "Precio inicial")}</label>
+                              <input type="number" value={mintAuctionPrice} onChange={(e) => setMintAuctionPrice(e.target.value)} min="0" placeholder="0"
+                                className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/30" />
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Currency", "Moneda")}</label>
+                              <select value={mintAuctionCurrency} onChange={(e) => setMintAuctionCurrency(e.target.value as "Avax" | "Usdc")} className={selectClassName} style={selectStyle}>
+                                <option className={selectOptionClassName} style={selectOptionStyle} value="Avax">AVAX</option>
+                                <option className={selectOptionClassName} style={selectOptionStyle} value="Usdc">USDC</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t("Duration (hours)", "Duración (horas)")}</label>
+                            <input type="number" value={mintAuctionDurationHours} onChange={(e) => setMintAuctionDurationHours(e.target.value)} min="1" placeholder="24"
+                              className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-cyan-400/30" />
+                          </div>
                         </div>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
-                </div>
 
-                {/* Readiness + mint */}
                 <div className="neural-card rounded-2xl border border-white/10 p-4">
                   <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {t("Ready to mint?", "¿Listo para mintear?")}
@@ -848,6 +877,7 @@ export function MarketplaceHubStudioSellTab({
               </div>
             </div>
           </div>
+          ) : null}
         </div>
       ) : null}
 

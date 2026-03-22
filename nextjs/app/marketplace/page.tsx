@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { MarketplaceHub } from "@/components/marketplace-hub";
-import { Footer } from "@/components/footer";
 import { createPageMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = createPageMetadata({
@@ -13,11 +12,10 @@ export const metadata: Metadata = createPageMetadata({
 
 export default function MarketplacePage() {
   return (
-    <main className="min-h-screen overflow-x-hidden neural-shell">
+    <main className="site-window-page site-window-skin min-h-screen overflow-x-hidden neural-shell">
       <Suspense fallback={null}>
         <MarketplaceHub mode="marketplace" />
       </Suspense>
-      <Footer />
     </main>
   );
 }

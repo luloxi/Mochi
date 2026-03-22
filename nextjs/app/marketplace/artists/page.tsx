@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Footer } from "@/components/footer";
 import { listArtistProfiles } from "@/lib/artist-profiles-store";
 
 export const runtime = "nodejs";
@@ -28,15 +27,9 @@ export default async function MarketplaceArtistsIndexPage({
         <section className="rounded-3xl border border-border bg-white/10 p-5 backdrop-blur-sm md:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Marketplace / Artists
-              </p>
               <h1 className="text-2xl font-semibold text-foreground md:text-3xl">
                 Artists / Artistas
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Browse artist profiles, open commission-enabled pages, and inspect each wallet collection.
-              </p>
             </div>
             <Link
               href="/marketplace"
@@ -133,8 +126,6 @@ export default async function MarketplaceArtistsIndexPage({
           ) : null}
         </section>
       </div>
-
-      <Footer />
     </main>
   );
 }

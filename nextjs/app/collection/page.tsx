@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Footer } from "@/components/footer";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { useWalletSession } from "@/components/wallet-provider";
 import { useLanguage } from "@/components/language-provider";
 import { Wallet, Download, Loader2 } from "lucide-react";
@@ -166,7 +164,11 @@ export default function CollectionPage() {
                   )
                 )}
               </p>
-              <ConnectWalletButton />
+              <p className="text-xs text-muted-foreground">
+                {isSpanish
+                  ? "La conexión de wallet solo vive en el header del landing."
+                  : "Wallet connection only lives in the landing header."}
+              </p>
             </div>
           ) : (
             <div className="neural-card rounded-2xl p-6 mb-10">
@@ -175,11 +177,6 @@ export default function CollectionPage() {
                   <h2 className="text-lg font-semibold text-foreground">
                     {isSpanish ? "Tus Mochis NFT" : "Your NFT Mochis"}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {isSpanish
-                      ? `Conectado como ${publicKey ? `${publicKey.slice(0, 6)}...${publicKey.slice(-4)}` : "Wallet"}`
-                      : `Connected as ${publicKey ? `${publicKey.slice(0, 6)}...${publicKey.slice(-4)}` : "Wallet"}`}
-                  </p>
                 </div>
               </div>
 
@@ -258,8 +255,6 @@ export default function CollectionPage() {
           )}
         </div>
       </section>
-
-      <Footer />
     </main>
   );
 }

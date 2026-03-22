@@ -14,21 +14,26 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   BookText,
+  BookOpen,
   CircleHelp,
   Download,
   Palette,
   Settings2,
+  ShoppingBag,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useSiteMochi } from "@/components/site-mochi-provider";
 import { useTheme, type Theme } from "@/components/theme-provider";
+import { useWalletSession } from "@/components/wallet-provider";
 import {
   CONFIG_WINDOW_META,
   DesktopConfigIcon,
   SiteMochiCompactConfigWindow,
   type ConfigPanelTab,
 } from "@/components/site-mochi-config-panel";
+import { SITE_DESKTOP_OPEN_WINDOW_EVENT, type SiteDesktopWindowKey } from "@/lib/site-desktop-window";
 
 type DesktopConfigShortcutProps = {
   shortcutKey: DesktopWindowKey;
@@ -37,7 +42,16 @@ type DesktopConfigShortcutProps = {
   customIcon?: LucideIcon;
 };
 
-type DesktopWindowKey = ConfigPanelTab | "memories" | "personalize" | "config";
+type DesktopWindowKey =
+  | ConfigPanelTab
+  | "memories"
+  | "personalize"
+  | "config"
+  | "marketplace"
+  | "creator"
+  | "guide"
+  | "help"
+  | "download";
 
 type StoredChatMessage = {
   role: "user" | "assistant";
@@ -73,14 +87,31 @@ type DesktopWindowDragState = {
   offsetY: number;
 };
 
-type HeaderIconLinkProps = {
-  href: string;
-  icon: LucideIcon;
-  label: string;
+type DesktopWindowSize = {
+  width: number;
+  height: number;
+};
+
+type DesktopWindowResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+type DesktopWindowResizeState = {
+  pointerId: number;
+  handle: DesktopWindowResizeHandle;
+  startX: number;
+  startY: number;
+  startLeft: number;
+  startTop: number;
+  startWidth: number;
+  startHeight: number;
 };
 
 const DESKTOP_SHORTCUT_KEYS: DesktopWindowKey[] = [
   "personalize",
+  "marketplace",
+  "creator",
+  "guide",
+  "help",
+  "download",
   "soul",
   "config",
   "memories",
@@ -93,15 +124,20 @@ const DESKTOP_SHORTCUT_START_Y = 20;
 const DESKTOP_SHORTCUT_COLUMN_WIDTH = 74;
 const DESKTOP_SHORTCUT_ROW_HEIGHT = 72;
 const DESKTOP_WINDOW_MARGIN = 16;
-const DESKTOP_WINDOW_TOP_OFFSET = 56;
+const DESKTOP_WINDOW_TOP_OFFSET = 0;
+const DESKTOP_WINDOW_MIN_WIDTH = 420;
+const DESKTOP_WINDOW_MIN_HEIGHT = 320;
+const DESKTOP_WINDOW_MARKETPLACE_MIN_WIDTH = 760;
+const DESKTOP_WINDOW_MARKETPLACE_MIN_HEIGHT = 520;
 const SITE_MOCHI_CHAT_HISTORY_STORAGE_KEY = "site-mochi-chat-history-v1";
 const SITE_MOCHI_CHAT_HISTORY_UPDATED_EVENT = "site-mochi:chat-history-updated";
-const DESKTOP_SHORTCUT_POSITIONS_STORAGE_KEY = "mochi.desktopShortcutPositions.v4";
 const DESKTOP_DEFAULT_SHORTCUT_ROWS: DesktopWindowKey[][] = [
-  ["soul", "personalize", "config", "memories"],
+  ["personalize", "marketplace", "creator", "guide"],
+  ["help", "download", "soul", "config", "memories"],
 ];
 const MOBILE_SHORTCUT_ROWS: DesktopWindowKey[][] = [
-  ["soul", "personalize", "config", "memories"],
+  ["personalize", "marketplace", "creator", "guide"],
+  ["help", "download", "soul", "config", "memories"],
 ];
 
 function clampDesktopWindowPosition(
@@ -124,6 +160,28 @@ function clampDesktopWindowPosition(
         Math.max(minTop, containerHeight - windowHeight - DESKTOP_WINDOW_MARGIN),
       ),
     ),
+  };
+}
+
+function getDesktopWindowMinSize(isMarketplaceWindow: boolean): DesktopWindowSize {
+  return {
+    width: isMarketplaceWindow ? DESKTOP_WINDOW_MARKETPLACE_MIN_WIDTH : DESKTOP_WINDOW_MIN_WIDTH,
+    height: isMarketplaceWindow ? DESKTOP_WINDOW_MARKETPLACE_MIN_HEIGHT : DESKTOP_WINDOW_MIN_HEIGHT,
+  };
+}
+
+function getDesktopWindowDefaultSize(
+  isMarketplaceWindow: boolean,
+  containerWidth: number,
+  containerHeight: number,
+): DesktopWindowSize {
+  const minSize = getDesktopWindowMinSize(isMarketplaceWindow);
+  const preferredWidth = isMarketplaceWindow ? 1200 : 760;
+  const preferredHeight = isMarketplaceWindow ? 860 : 720;
+
+  return {
+    width: Math.max(minSize.width, Math.min(preferredWidth, containerWidth - DESKTOP_WINDOW_MARGIN * 2)),
+    height: Math.max(minSize.height, Math.min(preferredHeight, containerHeight - DESKTOP_WINDOW_MARGIN * 2)),
   };
 }
 
@@ -291,20 +349,13 @@ function DesktopConfigShortcut({
   );
 }
 
-function HeaderIconLink({ href, icon: Icon, label }: HeaderIconLinkProps) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      title={label}
-      className="group relative inline-flex h-8 w-8 items-center justify-center text-foreground/72 transition-colors duration-150 hover:text-foreground"
-    >
-      <Icon className="h-4 w-4" strokeWidth={2.1} />
-      <span className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-none border border-border bg-background/92 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground opacity-0 shadow-[3px_3px_0_rgba(24,18,37,0.12)] transition-opacity duration-150 group-hover:opacity-100">
-        {label}
-      </span>
-    </Link>
-  );
+function getEmbeddedWindowPath(windowKey: DesktopWindowKey) {
+  if (windowKey === "marketplace") return "/marketplace?embedded=1";
+  if (windowKey === "creator") return "/character-creator?embedded=1";
+  if (windowKey === "guide") return "/animation-guide?embedded=1";
+  if (windowKey === "help") return "/help?embedded=1";
+  if (windowKey === "download") return "/download?embedded=1";
+  return null;
 }
 
 function sanitizeStoredChatMessages(input: unknown): StoredChatMessage[] {
@@ -594,12 +645,14 @@ export function SiteMochiLandingSection() {
   const { isSpanish, language, setLanguage } = useLanguage();
   const { config } = useSiteMochi();
   const { theme } = useTheme();
+  const { isAvailable, isConnected, isConnecting, publicKey, connect, disconnect } = useWalletSession();
   const [activeDesktopWindow, setActiveDesktopWindow] = useState<DesktopWindowKey | null>(null);
-  const [entryGateOpen, setEntryGateOpen] = useState(true);
+  const [entryGateOpen, setEntryGateOpen] = useState(false);
   const [shortcutPositions, setShortcutPositions] = useState<Record<DesktopWindowKey, DesktopShortcutPosition>>(
     {} as Record<DesktopWindowKey, DesktopShortcutPosition>,
   );
   const [desktopWindowPosition, setDesktopWindowPosition] = useState<DesktopWindowPosition | null>(null);
+  const [desktopWindowSize, setDesktopWindowSize] = useState<DesktopWindowSize | null>(null);
   const [isDesktopViewport, setIsDesktopViewport] = useState(false);
   const [memoryMessages, setMemoryMessages] = useState<StoredChatMessage[]>([]);
   const desktopRef = useRef<HTMLDivElement | null>(null);
@@ -607,23 +660,58 @@ export function SiteMochiLandingSection() {
   const desktopWindowRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DesktopShortcutDragState | null>(null);
   const desktopWindowDragStateRef = useRef<DesktopWindowDragState | null>(null);
-  const loadedPositionsRef = useRef(false);
+  const desktopWindowResizeStateRef = useRef<DesktopWindowResizeState | null>(null);
+  const desktopWindowDragCaptureRef = useRef<HTMLElement | null>(null);
+  const desktopWindowResizeCaptureRef = useRef<HTMLElement | null>(null);
 
   const t = (en: string, es: string) => (isSpanish ? es : en);
   const hasBlackPinkBackdrop = theme === "black-pink";
+  const embeddedWindowPath = activeDesktopWindow ? getEmbeddedWindowPath(activeDesktopWindow) : null;
+  const walletLabel = isConnected && publicKey
+    ? `${publicKey.slice(0, 6)}...${publicKey.slice(-4)}`
+    : isConnecting
+      ? t("Connecting...", "Conectando...")
+      : t("Connect wallet", "Conectar wallet");
+  const isWideWindow =
+    activeDesktopWindow === "marketplace" ||
+    activeDesktopWindow === "creator" ||
+    activeDesktopWindow === "guide" ||
+    activeDesktopWindow === "help" ||
+    activeDesktopWindow === "download";
   const activeWindowMeta = activeDesktopWindow
     ? CONFIG_WINDOW_META.find((item) => item.key === activeDesktopWindow) ?? null
     : null;
 
+  const handleWalletButtonClick = () => {
+    if (isConnected) {
+      disconnect();
+      return;
+    }
+    if (!isAvailable || isConnecting) {
+      return;
+    }
+    void connect();
+  };
+
   const desktopShortcuts: DesktopConfigShortcutProps[] = [
-    { shortcutKey: "personalize", label: t("Customize", "Personalizar"), customIcon: Palette },
+    { shortcutKey: "personalize", label: t("Appearance", "Apariencia"), customIcon: Palette },
+    { shortcutKey: "marketplace", label: t("Marketplace", "Marketplace"), customIcon: ShoppingBag },
+    { shortcutKey: "creator", label: t("Create", "Crear"), customIcon: Wand2 },
+    { shortcutKey: "guide", label: t("Guide", "Guía"), customIcon: BookOpen },
+    { shortcutKey: "help", label: t("Help", "Ayuda"), customIcon: CircleHelp },
+    { shortcutKey: "download", label: t("Download", "Descarga"), customIcon: Download },
     { shortcutKey: "soul", configKey: "soul", label: "Soul" },
     { shortcutKey: "config", label: t("Config", "Config"), customIcon: Settings2 },
     { shortcutKey: "memories", label: t("Memories", "Memorias"), customIcon: BookText },
   ];
   const mobileShortcuts: DesktopConfigShortcutProps[] = [
+    { shortcutKey: "personalize", label: t("Appearance", "Apariencia"), customIcon: Palette },
+    { shortcutKey: "marketplace", label: t("Marketplace", "Marketplace"), customIcon: ShoppingBag },
+    { shortcutKey: "creator", label: t("Create", "Crear"), customIcon: Wand2 },
+    { shortcutKey: "guide", label: t("Guide", "Guía"), customIcon: BookOpen },
+    { shortcutKey: "help", label: t("Help", "Ayuda"), customIcon: CircleHelp },
+    { shortcutKey: "download", label: t("Download", "Descarga"), customIcon: Download },
     { shortcutKey: "soul", configKey: "soul", label: "Soul" },
-    { shortcutKey: "personalize", label: t("Customize", "Personalizar"), customIcon: Palette },
     { shortcutKey: "config", label: t("Config", "Config"), customIcon: Settings2 },
     { shortcutKey: "memories", label: t("Memories", "Memorias"), customIcon: BookText },
   ];
@@ -665,51 +753,118 @@ export function SiteMochiLandingSection() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [activeDesktopWindow]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || loadedPositionsRef.current) return;
-    loadedPositionsRef.current = true;
+    const stopDesktopWindowResize = (pointerId?: number) => {
+      const resizeState = desktopWindowResizeStateRef.current;
+      desktopWindowResizeStateRef.current = null;
+      const captureEl = desktopWindowResizeCaptureRef.current;
+      desktopWindowResizeCaptureRef.current = null;
+      if (!resizeState || !captureEl || pointerId === undefined) return;
+      try {
+        captureEl.releasePointerCapture(pointerId);
+      } catch {
+        // no-op
+      }
+    };
 
-    const stored = window.localStorage.getItem(DESKTOP_SHORTCUT_POSITIONS_STORAGE_KEY);
-    if (!stored) return;
+    const stopDesktopWindowDrag = (pointerId?: number) => {
+      const dragState = desktopWindowDragStateRef.current;
+      desktopWindowDragStateRef.current = null;
+      const captureEl = desktopWindowDragCaptureRef.current;
+      desktopWindowDragCaptureRef.current = null;
+      if (!dragState || !captureEl || pointerId === undefined) return;
+      try {
+        captureEl.releasePointerCapture(pointerId);
+      } catch {
+        // no-op
+      }
+    };
 
-    try {
-      const parsed = JSON.parse(stored) as Partial<Record<DesktopWindowKey, DesktopShortcutPosition>>;
-      setShortcutPositions((current) => {
-        const desktop = desktopRef.current;
-        if (!desktop) return { ...current, ...parsed };
-
-        const normalized = Object.fromEntries(
-          Object.entries(parsed).map(([key, value]) => [
-            key,
-            value
-              ? snapShortcutPosition(value, desktop.clientWidth, desktop.clientHeight)
-              : value,
-          ]),
-        ) as Partial<Record<DesktopWindowKey, DesktopShortcutPosition>>;
-
-        return { ...current, ...normalized };
-      });
-    } catch {
-      window.localStorage.removeItem(DESKTOP_SHORTCUT_POSITIONS_STORAGE_KEY);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !loadedPositionsRef.current || Object.keys(shortcutPositions).length === 0) {
-      return;
-    }
-
-    window.localStorage.setItem(DESKTOP_SHORTCUT_POSITIONS_STORAGE_KEY, JSON.stringify(shortcutPositions));
-  }, [shortcutPositions]);
-
-  useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
-      const windowDragState = desktopWindowDragStateRef.current;
+      const resizeState = desktopWindowResizeStateRef.current;
       const desktopWindowLayer = desktopWindowLayerRef.current;
+      if (resizeState && desktopWindowLayer && event.pointerId === resizeState.pointerId) {
+        if (event.pointerType === "mouse" && event.buttons === 0) {
+          stopDesktopWindowResize(resizeState.pointerId);
+          return;
+        }
+        const minSize = getDesktopWindowMinSize(
+          activeDesktopWindow === "marketplace" ||
+          activeDesktopWindow === "creator" ||
+          activeDesktopWindow === "guide" ||
+          activeDesktopWindow === "help" ||
+          activeDesktopWindow === "download",
+        );
+        const right = resizeState.startLeft + resizeState.startWidth;
+        const bottom = resizeState.startTop + resizeState.startHeight;
+        const dx = event.clientX - resizeState.startX;
+        const dy = event.clientY - resizeState.startY;
+        let nextLeft = resizeState.startLeft;
+        let nextTop = resizeState.startTop;
+        let nextWidth = resizeState.startWidth;
+        let nextHeight = resizeState.startHeight;
+
+        if (resizeState.handle.includes("e")) {
+          nextWidth = Math.max(
+            minSize.width,
+            Math.min(
+              resizeState.startWidth + dx,
+              desktopWindowLayer.clientWidth - resizeState.startLeft - DESKTOP_WINDOW_MARGIN,
+            ),
+          );
+        }
+
+        if (resizeState.handle.includes("s")) {
+          nextHeight = Math.max(
+            minSize.height,
+            Math.min(
+              resizeState.startHeight + dy,
+              desktopWindowLayer.clientHeight - resizeState.startTop - DESKTOP_WINDOW_MARGIN,
+            ),
+          );
+        }
+
+        if (resizeState.handle.includes("w")) {
+          nextLeft = Math.max(
+            DESKTOP_WINDOW_MARGIN,
+            Math.min(resizeState.startLeft + dx, right - minSize.width),
+          );
+          nextWidth = right - nextLeft;
+        }
+
+        if (resizeState.handle.includes("n")) {
+          nextTop = Math.max(
+            DESKTOP_WINDOW_TOP_OFFSET,
+            Math.min(resizeState.startTop + dy, bottom - minSize.height),
+          );
+          nextHeight = bottom - nextTop;
+        }
+
+        setDesktopWindowPosition(
+          clampDesktopWindowPosition(
+            { x: nextLeft, y: nextTop },
+            desktopWindowLayer.clientWidth,
+            desktopWindowLayer.clientHeight,
+            nextWidth,
+            nextHeight,
+          ),
+        );
+        setDesktopWindowSize({
+          width: Math.min(nextWidth, desktopWindowLayer.clientWidth - nextLeft - DESKTOP_WINDOW_MARGIN),
+          height: Math.min(nextHeight, desktopWindowLayer.clientHeight - nextTop - DESKTOP_WINDOW_MARGIN),
+        });
+        return;
+      }
+
+      const windowDragState = desktopWindowDragStateRef.current;
       const desktopWindow = desktopWindowRef.current;
       if (windowDragState && desktopWindowLayer && desktopWindow && event.pointerId === windowDragState.pointerId) {
+        if (event.pointerType === "mouse" && event.buttons === 0) {
+          stopDesktopWindowDrag(windowDragState.pointerId);
+          return;
+        }
         const layerBounds = desktopWindowLayer.getBoundingClientRect();
         setDesktopWindowPosition(
           clampDesktopWindowPosition(
@@ -753,9 +908,15 @@ export function SiteMochiLandingSection() {
     };
 
     const handlePointerEnd = (event: PointerEvent) => {
+      const resizeState = desktopWindowResizeStateRef.current;
+      if (resizeState && event.pointerId === resizeState.pointerId) {
+        stopDesktopWindowResize(resizeState.pointerId);
+        return;
+      }
+
       const windowDragState = desktopWindowDragStateRef.current;
       if (windowDragState && event.pointerId === windowDragState.pointerId) {
-        desktopWindowDragStateRef.current = null;
+        stopDesktopWindowDrag(windowDragState.pointerId);
         return;
       }
 
@@ -784,6 +945,7 @@ export function SiteMochiLandingSection() {
     }
 
     setDesktopWindowPosition(null);
+    setDesktopWindowSize(null);
     setActiveDesktopWindow(tab);
   };
 
@@ -826,6 +988,21 @@ export function SiteMochiLandingSection() {
   }, []);
 
   useEffect(() => {
+    const handleOpenWindow = (event: Event) => {
+      const customEvent = event as CustomEvent<{ windowKey?: SiteDesktopWindowKey }>;
+      const windowKey = customEvent.detail?.windowKey;
+      if (!windowKey) return;
+      customEvent.preventDefault();
+      setDesktopWindowPosition(null);
+      setDesktopWindowSize(null);
+      setActiveDesktopWindow(windowKey);
+    };
+
+    window.addEventListener(SITE_DESKTOP_OPEN_WINDOW_EVENT, handleOpenWindow as EventListener);
+    return () => window.removeEventListener(SITE_DESKTOP_OPEN_WINDOW_EVENT, handleOpenWindow as EventListener);
+  }, []);
+
+  useEffect(() => {
     const loadMemoryMessages = () => {
       if (typeof window === "undefined") return;
       try {
@@ -859,6 +1036,20 @@ export function SiteMochiLandingSection() {
       const layer = desktopWindowLayerRef.current;
       const windowEl = desktopWindowRef.current;
       if (!layer || !windowEl) return;
+      const defaultSize = getDesktopWindowDefaultSize(
+        activeDesktopWindow === "marketplace" ||
+          activeDesktopWindow === "creator" ||
+          activeDesktopWindow === "guide" ||
+          activeDesktopWindow === "help" ||
+          activeDesktopWindow === "download",
+        layer.clientWidth,
+        layer.clientHeight,
+      );
+      const nextSize = desktopWindowSize ?? defaultSize;
+
+      if (!desktopWindowSize) {
+        setDesktopWindowSize(defaultSize);
+      }
 
       setDesktopWindowPosition((current) => {
         if (current) {
@@ -866,23 +1057,23 @@ export function SiteMochiLandingSection() {
             current,
             layer.clientWidth,
             layer.clientHeight,
-            windowEl.offsetWidth,
-            windowEl.offsetHeight,
+            nextSize.width,
+            nextSize.height,
           );
         }
 
         return clampDesktopWindowPosition(
           {
-            x: Math.round((layer.clientWidth - windowEl.offsetWidth) / 2),
+            x: Math.round((layer.clientWidth - nextSize.width) / 2),
             y: Math.max(
               DESKTOP_WINDOW_MARGIN,
-              Math.round((layer.clientHeight - windowEl.offsetHeight) / 2) - DESKTOP_WINDOW_TOP_OFFSET / 2,
+              Math.round((layer.clientHeight - nextSize.height) / 2),
             ),
           },
           layer.clientWidth,
           layer.clientHeight,
-          windowEl.offsetWidth,
-          windowEl.offsetHeight,
+          nextSize.width,
+          nextSize.height,
         );
       });
     };
@@ -899,7 +1090,7 @@ export function SiteMochiLandingSection() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [activeDesktopWindow]);
+  }, [activeDesktopWindow, desktopWindowSize]);
 
   const handleDesktopWindowPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "mouse") return;
@@ -908,12 +1099,53 @@ export function SiteMochiLandingSection() {
     const windowEl = desktopWindowRef.current;
     if (!layer || !windowEl || !desktopWindowPosition) return;
 
+    desktopWindowResizeStateRef.current = null;
+    desktopWindowResizeCaptureRef.current = null;
     const layerBounds = layer.getBoundingClientRect();
     desktopWindowDragStateRef.current = {
       pointerId: event.pointerId,
       offsetX: event.clientX - layerBounds.left - desktopWindowPosition.x,
       offsetY: event.clientY - layerBounds.top - desktopWindowPosition.y,
     };
+    desktopWindowDragCaptureRef.current = event.currentTarget;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // no-op
+    }
+    event.preventDefault();
+  };
+
+  const handleDesktopWindowResizePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    handle: DesktopWindowResizeHandle,
+  ) => {
+    if (event.pointerType !== "mouse") return;
+    event.stopPropagation();
+    event.preventDefault();
+
+    const layer = desktopWindowLayerRef.current;
+    const windowEl = desktopWindowRef.current;
+    if (!layer || !windowEl || !desktopWindowPosition) return;
+
+    desktopWindowDragStateRef.current = null;
+    desktopWindowDragCaptureRef.current = null;
+    desktopWindowResizeStateRef.current = {
+      pointerId: event.pointerId,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: desktopWindowPosition.x,
+      startTop: desktopWindowPosition.y,
+      startWidth: windowEl.offsetWidth,
+      startHeight: windowEl.offsetHeight,
+    };
+    desktopWindowResizeCaptureRef.current = event.currentTarget;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // no-op
+    }
   };
 
   return (
@@ -945,8 +1177,14 @@ export function SiteMochiLandingSection() {
               >
                 <span aria-hidden="true">{language === "es" ? "🇦🇷" : "🇺🇸"}</span>
               </button>
-              <HeaderIconLink href="/help" icon={CircleHelp} label={t("Help", "Ayuda")} />
-              <HeaderIconLink href="/download" icon={Download} label={t("Download", "Descarga")} />
+              <button
+                type="button"
+                onClick={handleWalletButtonClick}
+                disabled={(!isConnected && !isAvailable) || isConnecting}
+                className="inline-flex h-8 items-center justify-center rounded-none border border-foreground/10 bg-card/55 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition-all duration-150 hover:border-foreground/20 hover:bg-card/80 disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {walletLabel}
+              </button>
             </div>
           </div>
         </div>
@@ -962,7 +1200,10 @@ export function SiteMochiLandingSection() {
           <div ref={desktopRef} className="relative z-10 min-h-0 flex-1 overflow-hidden p-5">
             <div className="flex h-full min-h-0 items-end pb-3 pt-2 lg:hidden">
               {mobileShortcutRows.map((row, rowIndex) => (
-                <div key={`mobile-row-${rowIndex}`} className="grid w-full grid-cols-4 items-end justify-items-center">
+                <div
+                  key={`mobile-row-${rowIndex}`}
+                  className={`grid w-full items-end justify-items-center ${row.length === 4 ? "grid-cols-4" : "grid-cols-5"}`}
+                >
                   {row.map((shortcutKey) => {
                     const shortcut = shortcutByKey[shortcutKey];
                     return (
@@ -1008,23 +1249,29 @@ export function SiteMochiLandingSection() {
           {activeDesktopWindow ? (
             <div
               ref={desktopWindowLayerRef}
-              className="pointer-events-none absolute inset-x-0 bottom-0 top-10 z-20 flex items-start justify-center p-3 pt-2 sm:p-6 sm:pt-6 lg:block"
+              className="pointer-events-none absolute inset-x-0 bottom-0 top-10 z-20 flex items-stretch justify-center p-0 lg:block"
             >
               <div
                 ref={desktopWindowRef}
-                className="pointer-events-auto relative flex w-full max-w-[min(760px,calc(100%-1.5rem))] flex-col overflow-hidden rounded-none border-2 border-border bg-background/92 text-foreground shadow-[8px_8px_0_rgba(24,18,37,0.18)] backdrop-blur-xl lg:absolute lg:min-w-[320px] lg:max-w-[min(760px,calc(100%-2rem))]"
+                className={`pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-none border-2 border-border bg-background/92 text-foreground shadow-[8px_8px_0_rgba(24,18,37,0.18)] backdrop-blur-xl lg:absolute lg:min-w-[320px] ${
+                  isWideWindow
+                    ? "lg:max-w-[min(1200px,calc(100%-2rem))]"
+                    : "lg:max-w-[min(760px,calc(100%-2rem))]"
+                }`}
                 style={
                   isDesktopViewport
                     ? {
                         left: desktopWindowPosition?.x ?? DESKTOP_WINDOW_MARGIN,
                         top: desktopWindowPosition?.y ?? DESKTOP_WINDOW_MARGIN,
-                        width: "min(760px, calc(100% - 2rem))",
-                        height: "min(720px, calc(100dvh - 7rem), calc(100% - 2rem))",
+                        width: desktopWindowSize?.width ?? (isWideWindow ? "min(1200px, calc(100% - 2rem))" : "min(760px, calc(100% - 2rem))"),
+                        height: desktopWindowSize?.height ?? (
+                          isWideWindow
+                            ? "min(860px, calc(100dvh - 7rem), calc(100% - 2rem))"
+                            : "min(720px, calc(100dvh - 7rem), calc(100% - 2rem))"
+                        ),
                         maxHeight: "min(calc(100dvh - 7rem), calc(100% - 2rem))",
                       }
-                    : {
-                        maxHeight: "calc(100dvh - 4rem)",
-                      }
+                    : {}
                 }
               >
                 <div
@@ -1033,7 +1280,17 @@ export function SiteMochiLandingSection() {
                 >
                   <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     {activeDesktopWindow === "personalize"
-                      ? t("Customize", "Personalizar")
+                      ? t("Appearance", "Apariencia")
+                      : activeDesktopWindow === "marketplace"
+                      ? t("Marketplace", "Marketplace")
+                      : activeDesktopWindow === "creator"
+                      ? t("Creator", "Creador")
+                      : activeDesktopWindow === "guide"
+                      ? t("Animation Guide", "Guía de animación")
+                      : activeDesktopWindow === "help"
+                      ? t("Help", "Ayuda")
+                      : activeDesktopWindow === "download"
+                      ? t("Download", "Descargas")
                       : activeDesktopWindow === "config"
                       ? t("Config", "Config")
                       : activeDesktopWindow === "memories"
@@ -1049,6 +1306,7 @@ export function SiteMochiLandingSection() {
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={() => {
                       setDesktopWindowPosition(null);
+                      setDesktopWindowSize(null);
                       setActiveDesktopWindow(null);
                     }}
                     className="rounded-none border border-border bg-background/60 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground hover:bg-background/80"
@@ -1056,14 +1314,58 @@ export function SiteMochiLandingSection() {
                     {t("Close", "Cerrar")}
                   </button>
                 </div>
+                {isDesktopViewport ? (
+                  <>
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "n")}
+                      className="absolute inset-x-3 top-0 z-10 h-[10px] cursor-n-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "s")}
+                      className="absolute inset-x-3 bottom-0 z-10 h-[10px] cursor-s-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "e")}
+                      className="absolute inset-y-3 right-0 z-10 w-[10px] cursor-e-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "w")}
+                      className="absolute inset-y-3 left-0 z-10 w-[10px] cursor-w-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "ne")}
+                      className="absolute right-0 top-0 z-10 h-[14px] w-[14px] cursor-ne-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "nw")}
+                      className="absolute left-0 top-0 z-10 h-[14px] w-[14px] cursor-nw-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "se")}
+                      className="absolute bottom-0 right-0 z-10 h-[14px] w-[14px] cursor-se-resize"
+                    />
+                    <div
+                      onPointerDown={(event) => handleDesktopWindowResizePointerDown(event, "sw")}
+                      className="absolute bottom-0 left-0 z-10 h-[14px] w-[14px] cursor-sw-resize"
+                    />
+                  </>
+                ) : null}
                 <div
-                  className="min-h-0 overflow-hidden lg:h-[calc(100%-42px)] lg:max-h-[calc(100%-42px)]"
-                  style={{
+                  key={`${activeDesktopWindow ?? "none"}-${language}`}
+                  className="flex-1 min-h-0 overflow-hidden lg:h-[calc(100%-42px)] lg:max-h-[calc(100%-42px)]"
+                  style={isDesktopViewport ? {
                     maxHeight: "min(calc(100dvh - 7rem - 42px), calc(100% - 42px))",
-                  }}
+                  } : undefined}
                 >
                   {activeDesktopWindow === "personalize" ? (
                     <DesktopPersonalizeWindow isSpanish={isSpanish} />
+                  ) : embeddedWindowPath ? (
+                    <iframe
+                      key={`${embeddedWindowPath}-${language}`}
+                      src={embeddedWindowPath}
+                      title={activeDesktopWindow || "window"}
+                      className="h-full w-full border-0 bg-background"
+                    />
                   ) : activeDesktopWindow === "config" ? (
                     <DesktopConfigWindow isSpanish={isSpanish} />
                   ) : activeDesktopWindow === "memories" ? (

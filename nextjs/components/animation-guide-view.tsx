@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, Download, Play } from "lucide-react";
+import { Download, Play } from "lucide-react";
 import {
-  CHARACTER_CREATOR_PATH,
   PREVIEW_ANIMATION_SETS,
   REQUIRED_SPRITES_ZIP_PATH,
   animationReferenceSpriteUrl,
@@ -84,7 +82,7 @@ function FrameLoop({ frames, title }: { frames: readonly string[]; title: string
 
   return (
     <div className="animation-guide-card neural-card rounded-[1.5rem] border border-cyan-300/15 p-5">
-      <div className="relative flex min-h-[230px] items-center justify-center overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-5">
+      <div className="relative flex min-h-[230px] items-center justify-center overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.03]">
         <div className="animation-guide-preview-badge absolute left-3 top-3 flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1">
           <Play className="animation-guide-preview-icon h-2.5 w-2.5 fill-cyan-300 text-cyan-300" />
           <span className="animation-guide-preview-label text-[10px] font-medium text-cyan-200/80">preview</span>
@@ -122,13 +120,7 @@ export function AnimationGuideView() {
       <div className="animation-guide-hero neural-card rounded-3xl border border-cyan-300/15 p-8 sm:p-10">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
-            <span className="animation-guide-kicker inline-flex rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-cyan-100/80">
-              Animation Guide
-            </span>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-              {t("Visual animation guide", "Guía visual de animación")}
-            </h1>
-            <p className="mt-4 text-sm leading-7 text-foreground/80 sm:text-base">
+            <p className="text-sm leading-7 text-foreground/80 sm:text-base">
               {t(
                 "This guide shows the real sprites, explains what each sequence is for, and plays a simple loop so you can understand how each animation works. The character creator lets you preview animations with the frames you create.",
                 "Esta guía muestra los sprites reales, explica para qué sirve cada secuencia y reproduce un loop simple para que entiendas cómo funciona cada animación. El creador de personajes te permite previsualizar animaciones con los frames que vayas creando.",
@@ -136,13 +128,6 @@ export function AnimationGuideView() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link
-              href={CHARACTER_CREATOR_PATH}
-              className="animation-guide-cta animation-guide-cta-primary inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-            >
-              <ArrowRight className="h-4 w-4" />
-              {t("Open character creator", "Abrir creador de personajes")}
-            </Link>
             <a
               href={REQUIRED_SPRITES_ZIP_PATH}
               download
@@ -169,8 +154,8 @@ export function AnimationGuideView() {
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {section.frames.map((frame, index) => (
-                <div key={`${section.key}-${frame}-${index}`} className="animation-guide-thumb group rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-colors hover:border-white/20">
-                  <div className="animation-guide-thumb-frame flex aspect-square items-center justify-center rounded-xl border border-white/10 bg-white/5 p-3">
+                <div key={`${section.key}-${frame}-${index}`} className="animation-guide-thumb group rounded-2xl border border-white/10 bg-white/[0.04] p-0 transition-colors hover:border-white/20">
+                  <div className="animation-guide-thumb-frame flex aspect-square items-center justify-center rounded-[calc(1rem-1px)] border border-white/10 bg-white/5">
                     <img
                       src={animationReferenceSpriteUrl(frame)}
                       alt={frame}

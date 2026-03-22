@@ -57,11 +57,12 @@ type MarketplaceHubMode = "all" | "marketplace" | "settings" | "creator";
 
 type MarketplaceHubProps = {
   mode?: MarketplaceHubMode;
+  variant?: "page" | "window";
 };
 
-export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
+export function MarketplaceHub({ mode = "all", variant = "page" }: MarketplaceHubProps) {
   const { isSpanish } = useLanguage();
-  const { publicKey, isConnected, isConnecting, connect, signTransaction } = useWalletSession();
+  const { publicKey, isConnected, signTransaction } = useWalletSession();
   const t = (en: string, es: string) => (isSpanish ? es : en);
   const [marketplaceSellTab, setMarketplaceSellTab] = useState<"explore" | "selling" | "creators">("explore");
   const [creatorsStudioTab, setCreatorsStudioTab] = useState<"create" | "commissions">("create");
@@ -200,6 +201,8 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
   const isMarketplaceOnlyMode = mode === "marketplace";
   const isSettingsOnlyMode = mode === "settings";
   const isCreatorOnlyMode = mode === "creator";
+  const isWindowVariant = variant === "window";
+  const topPaddingClass = isWindowVariant ? "pt-1" : "pt-0";
 
   useEffect(() => {
     const tokenUris = Array.from(
@@ -283,7 +286,7 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
   async function handleCreateListing(tokenId: number, priceRaw: string, currency: "Avax" | "Usdc") {
     if (!publicKey) {
-      setTxMessage(t("Connect a wallet from the global header to list items.", "Conecta una wallet desde el header global para publicar."));
+      setTxMessage(t("Connect a wallet to list items.", "Conecta una wallet para publicar."));
       return;
     }
 
@@ -340,8 +343,8 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
     if (!publicKey) {
       setTxMessage(
         t(
-          "Connect a wallet from the global header to create an auction.",
-          "Conecta una wallet desde el header global para crear una subasta.",
+          "Connect a wallet to create an auction.",
+          "Conecta una wallet para crear una subasta.",
         ),
       );
       return;
@@ -411,8 +414,8 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
     if (!publicKey) {
       setTxMessage(
         t(
-          "Connect a wallet from the global header to mint NFTs.",
-          "Conecta una wallet desde el header global para mintear NFTs.",
+          "Connect a wallet to mint NFTs.",
+          "Conecta una wallet para mintear NFTs.",
         ),
       );
       return;
@@ -534,7 +537,7 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
   async function handleAuctionBid() {
     if (!publicKey) {
-      setTxMessage(t("Connect your wallet from the header first.", "Conecta tu wallet desde el header primero."));
+      setTxMessage(t("Connect your wallet first.", "Conecta tu wallet primero."));
       return;
     }
     if (liveAuctionItem?.auction?.auctionId === null || liveAuctionItem?.auction?.auctionId === undefined) {
@@ -565,7 +568,7 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
   async function handleCreateSwapOffer(tokenId: number, intention: string) {
     if (!publicKey) {
-      setTxMessage(t("Connect your wallet from the header first.", "Conecta tu wallet desde el header primero."));
+      setTxMessage(t("Connect your wallet first.", "Conecta tu wallet primero."));
       return;
     }
     setTxBusy(true);
@@ -692,7 +695,7 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
   async function handleCreateCommissionEgg(uri: string, priceRaw: string, currency: "Avax" | "Usdc", etaDaysRaw: string) {
     if (!publicKey) {
-      setTxMessage(t("Connect a wallet from the global header.", "Conecta una wallet desde el header global."));
+      setTxMessage(t("Connect a wallet first.", "Conecta una wallet primero."));
       return;
     }
 
@@ -788,52 +791,58 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-8 ${
-        isSettingsOnlyMode || isCreatorOnlyMode ? "pt-4" : "pt-28"
+      className={`site-window-skin mx-auto flex w-full ${isWindowVariant ? "max-w-none" : "max-w-7xl"} flex-col gap-4 px-4 pb-6 ${
+        isSettingsOnlyMode || isCreatorOnlyMode ? "pt-4" : topPaddingClass
       } md:px-6 lg:px-8`}
     >
       {!isSettingsOnlyMode ? (
         <>
           {/* Tab strip — only in marketplace mode */}
           {isMarketplaceOnlyMode ? (
-            <div className="rounded-2xl border border-border bg-white/10 p-2">
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMarketplaceSellTab("explore")}
-                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs transition ${
-                    marketplaceSellTab === "explore"
-                      ? "border-emerald-300/30 bg-emerald-400/15 text-foreground"
-                      : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
-                  }`}
-                >
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  {t("Explore / Shop", "Explorar / Comprar")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMarketplaceSellTab("selling")}
-                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs transition ${
-                    marketplaceSellTab === "selling"
-                      ? "border-blue-300/30 bg-blue-400/15 text-foreground"
-                      : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
-                  }`}
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  {t("Selling", "Vender")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMarketplaceSellTab("creators")}
-                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs transition ${
-                    marketplaceSellTab === "creators"
-                      ? "border-fuchsia-300/30 bg-fuchsia-400/15 text-foreground"
-                      : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
-                  }`}
-                >
-                  <ArrowLeftRight className="h-3.5 w-3.5" />
-                  {t("Creators", "Creadores")}
-                </button>
+            <div
+              className={`site-window-toolbar top-0 z-20 backdrop-blur-xl ${
+                isWindowVariant ? "sticky -mx-4 -mt-1 mb-2 px-4 py-2 md:-mx-6 md:px-6 lg:px-8" : "sticky left-0 right-0 mb-3 px-4 py-2 md:px-6 lg:px-8"
+              }`}
+            >
+              <div className="flex flex-col gap-3">
+                <div className="grid flex-1 grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMarketplaceSellTab("explore")}
+                    className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 border-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                      marketplaceSellTab === "explore"
+                        ? "border-emerald-300/55 bg-emerald-400/18 text-foreground shadow-[4px_4px_0_rgba(52,211,153,0.12)]"
+                        : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
+                    }`}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" />
+                    {t("Explore / Shop", "Explorar / Comprar")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMarketplaceSellTab("selling")}
+                    className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 border-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                      marketplaceSellTab === "selling"
+                        ? "border-blue-300/55 bg-blue-400/18 text-foreground shadow-[4px_4px_0_rgba(96,165,250,0.12)]"
+                        : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
+                    }`}
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    {t("Selling", "Vender")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMarketplaceSellTab("creators")}
+                    className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 border-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                      marketplaceSellTab === "creators"
+                        ? "border-fuchsia-300/55 bg-fuchsia-400/18 text-foreground shadow-[4px_4px_0_rgba(217,70,239,0.12)]"
+                        : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
+                    }`}
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    {t("Creators", "Creadores")}
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -868,7 +877,7 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
           {/* Sell / Swap tab */}
           {isMarketplaceOnlyMode && marketplaceSellTab === "selling" ? (
-            <section className="config-contrast-panel rounded-3xl border border-border bg-white/10 p-4 md:p-6">
+            <section className="site-window-surface config-contrast-panel rounded-3xl border border-border bg-white/10 p-4 md:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
                   <Tag className="h-5 w-5 text-blue-300" />
@@ -892,16 +901,9 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
                 <div className="rounded-2xl border border-dashed border-border bg-white/5 p-6 text-center text-sm text-muted-foreground">
                   <div className="flex flex-col items-center gap-3">
                     <p>{t("Connect an EVM wallet to list your NFTs.", "Conecta una wallet EVM para publicar tus NFTs.")}</p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-emerald-500 text-black hover:bg-emerald-400"
-                      onClick={() => void connect()}
-                      disabled={isConnecting}
-                    >
-                      {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {t("Connect wallet", "Conectar wallet")}
-                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {t("Connect from the landing header to publish.", "Conecta desde el header del landing para publicar.")}
+                    </p>
                   </div>
                 </div>
               ) : studioLoading ? (
@@ -938,7 +940,7 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
 
           {/* Creators tab */}
           {(isMarketplaceOnlyMode && marketplaceSellTab === "creators") || isCreatorOnlyMode ? (
-            <section className="config-contrast-panel rounded-3xl border border-border bg-white/10 p-4 md:p-6">
+            <section className="site-window-surface config-contrast-panel rounded-3xl border border-border bg-white/10 p-4 md:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
                   <ArrowLeftRight className="h-5 w-5 text-fuchsia-300" />
@@ -962,9 +964,9 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
                 <button
                   type="button"
                   onClick={() => setCreatorsStudioTab("create")}
-                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs transition ${
+                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 border-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
                     creatorsStudioTab === "create"
-                      ? "border-blue-300/30 bg-blue-400/15 text-foreground"
+                      ? "border-blue-300/55 bg-blue-400/18 text-foreground shadow-[4px_4px_0_rgba(96,165,250,0.12)]"
                       : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
                   }`}
                 >
@@ -974,9 +976,9 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
                 <button
                   type="button"
                   onClick={() => setCreatorsStudioTab("commissions")}
-                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs transition ${
+                  className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 border-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
                     creatorsStudioTab === "commissions"
-                      ? "border-fuchsia-300/30 bg-fuchsia-400/15 text-foreground"
+                      ? "border-fuchsia-300/55 bg-fuchsia-400/18 text-foreground shadow-[4px_4px_0_rgba(217,70,239,0.12)]"
                       : "border-border bg-white/5 text-muted-foreground hover:bg-white/10"
                   }`}
                 >
@@ -1014,16 +1016,12 @@ export function MarketplaceHub({ mode = "all" }: MarketplaceHubProps) {
                         "Conecta una wallet EVM para crear NFTs y gestionar comisiones.",
                       )}
                     </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-emerald-500 text-black hover:bg-emerald-400"
-                      onClick={() => void connect()}
-                      disabled={isConnecting}
-                    >
-                      {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {t("Connect wallet", "Conectar wallet")}
-                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        "Connect from the landing header to create NFTs and manage commissions.",
+                        "Conecta desde el header del landing para crear NFTs y gestionar comisiones.",
+                      )}
+                    </p>
                   </div>
                 </div>
                 )

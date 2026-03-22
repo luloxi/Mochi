@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Footer } from "@/components/footer";
 import { useLanguage } from "@/components/language-provider";
 
 type MarketplaceCommissionsManualPageClientProps = {
@@ -63,12 +62,6 @@ export function MarketplaceCommissionsManualPageClient({
               <h1 className="text-2xl font-semibold text-foreground md:text-3xl">
                 {t("Commission Manual", "Manual de comisiones")}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t(
-                  "Simple terms for artists and buyers using commission eggs in the marketplace.",
-                  "Términos simples para artistas y compradores que usan huevos de comisión en el marketplace.",
-                )}
-              </p>
             </div>
             <Link
               href="/marketplace"
@@ -136,8 +129,6 @@ export function MarketplaceCommissionsManualPageClient({
           </ul>
         </section>
       </div>
-
-      <Footer />
     </main>
   );
 }

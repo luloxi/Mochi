@@ -6,15 +6,11 @@ const DownloadSection = dynamic(() => import("@/components/download-section").th
   ssr: false,
   loading: () => <div className="min-h-[320px]" />,
 });
-const Footer = dynamic(() => import("@/components/footer").then(m => m.Footer), { ssr: false });
 
-export default function DownloadClient() {
+export default function DownloadClient({ embedded = false }: { embedded?: boolean }) {
   return (
-    <main className="min-h-screen neural-shell">
-      <div className="bg-transparent overflow-x-hidden">
-        <DownloadSection />
-      </div>
-      <Footer />
+    <main className="site-window-page site-window-skin min-h-screen overflow-x-hidden neural-shell">
+      <DownloadSection embedded={embedded} />
     </main>
   );
 }

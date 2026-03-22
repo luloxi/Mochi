@@ -16,6 +16,7 @@ import {
 } from "@/components/marketplace-hub-shared";
 import type { MarketplaceMyStudioResponse, MyStudioCommissionOrderItem } from "@/lib/marketplace-hub-types";
 import { ANIMATION_GUIDE_PATH, CHARACTER_CREATOR_PATH } from "@/lib/mochi-sprite-spec";
+import { openSiteDesktopWindow } from "@/lib/site-desktop-window";
 
 type Props = {
   t: HubTranslateFn;
@@ -139,7 +140,7 @@ export function MarketplaceHubStudioCommissionsTab({
   }
 
   return (
-    <div className="config-contrast-panel space-y-4">
+    <div className="site-window-skin config-contrast-panel space-y-4">
       <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/[0.06] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
@@ -156,12 +157,20 @@ export function MarketplaceHubStudioCommissionsTab({
           <div className="flex flex-wrap gap-2">
             <Link
               href={ANIMATION_GUIDE_PATH}
+              onClick={(event) => {
+                event.preventDefault();
+                openSiteDesktopWindow("guide", ANIMATION_GUIDE_PATH);
+              }}
               className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-cyan-400/25"
             >
               {t("Animation guide", "Guía de animaciones")}
             </Link>
             <Link
               href={CHARACTER_CREATOR_PATH}
+              onClick={(event) => {
+                event.preventDefault();
+                openSiteDesktopWindow("creator", CHARACTER_CREATOR_PATH);
+              }}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-white/10"
             >
               {t("Open creator", "Abrir creador")}

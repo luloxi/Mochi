@@ -1875,3 +1875,77 @@ body[data-theme="pastel"] #giveaway-panel .neural-button:hover {
 .header-profile-menu .text-muted-foreground {
   color: color-mix(in oklab, var(--foreground) 72%, var(--background) 28%) !important;
 }
+
+/* Landing desktop window skin shared by marketplace, guide, help, download, creator */
+.site-window-skin {
+  color: var(--foreground);
+}
+
+.site-window-surface {
+  border: 2px solid color-mix(in oklab, var(--border) 88%, var(--foreground) 12%) !important;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--background) 94%, white 6%), color-mix(in oklab, var(--card) 92%, var(--background) 8%)) !important;
+  box-shadow:
+    8px 8px 0 color-mix(in oklab, var(--foreground) 10%, transparent),
+    inset 0 0 0 1px color-mix(in oklab, white 22%, transparent) !important;
+}
+
+.site-window-toolbar {
+  border: 2px solid color-mix(in oklab, var(--border) 82%, var(--foreground) 18%) !important;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--card) 95%, white 5%), color-mix(in oklab, var(--background) 88%, var(--card) 12%)) !important;
+  box-shadow:
+    6px 6px 0 color-mix(in oklab, var(--foreground) 10%, transparent),
+    inset 0 0 0 1px color-mix(in oklab, white 20%, transparent) !important;
+}
+
+.site-window-page {
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--background) 50%, transparent), transparent 24%);
+}
+
+.site-window-skin .neural-card {
+  border: 2px solid color-mix(in oklab, var(--border) 88%, var(--foreground) 12%) !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--background) 94%, white 6%), color-mix(in oklab, var(--card) 92%, var(--background) 8%)) !important;
+  box-shadow:
+    8px 8px 0 color-mix(in oklab, var(--foreground) 10%, transparent),
+    inset 0 0 0 1px color-mix(in oklab, white 22%, transparent) !important;
+}
+
+.site-window-skin :is(.rounded-3xl, .rounded-2xl, .rounded-xl, .rounded-lg, .rounded-md, .rounded-\[1\.5rem\], .rounded-\[1\.25rem\]) {
+  border-radius: 0 !important;
+}
+
+.site-window-skin :is(input:not([type="range"]), select, textarea) {
+  border-radius: 0 !important;
+  border-width: 2px !important;
+  border-color: color-mix(in oklab, var(--border) 76%, var(--foreground) 24%) !important;
+  background: color-mix(in oklab, var(--card) 94%, var(--background) 6%) !important;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 14%, transparent);
+}
+
+.site-window-skin :is(button, [data-slot="button"], a.inline-flex) {
+  border-radius: 0 !important;
+}
+
+.site-window-skin :is(button, [data-slot="button"]) {
+  box-shadow: 3px 3px 0 color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.site-window-skin .neural-button,
+.site-window-skin .animation-guide-cta,
+.site-window-skin .animation-guide-frame-chip {
+  border-radius: 0 !important;
+}
+
+.site-window-skin .animation-guide-thumb,
+.site-window-skin .animation-guide-thumb-frame,
+.site-window-skin .animation-guide-card .animation-guide-preview-badge {
+  border-radius: 0 !important;
+}
+
+.site-window-skin .text-muted-foreground {
+  color: color-mix(in oklab, var(--foreground) 70%, var(--background) 30%) !important;
+}

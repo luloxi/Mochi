@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Footer } from "@/components/footer";
 import { fetchAuctions } from "@/lib/auction";
 import { getArtistProfile, isValidWalletAddress } from "@/lib/artist-profiles-store";
 import { fetchListings } from "@/lib/marketplace";
@@ -80,9 +79,6 @@ export default async function ArtistCollectionPage({ params }: Params) {
         <section className="rounded-3xl border border-border bg-white/10 p-5 backdrop-blur-sm md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Wallet collection / Coleccion
-              </p>
               <h1 className="text-2xl font-semibold text-foreground md:text-3xl">
                 {profile?.displayName || walletShort(normalizedWallet)} · Collection
               </h1>
@@ -206,8 +202,6 @@ export default async function ArtistCollectionPage({ params }: Params) {
           ) : null}
         </section>
       </div>
-
-      <Footer />
     </main>
   );
 }

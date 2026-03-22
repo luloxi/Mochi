@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { Footer } from "@/components/footer";
 import { MarketplaceEditionOwnerActions } from "@/components/marketplace-edition-owner-actions";
 import { fetchEditionListings } from "@/lib/marketplace";
 import { fetchEditionTokenById } from "@/lib/nft-read";
@@ -124,8 +123,6 @@ export default async function MarketplaceEditionTokenPage({ params }: Params) {
           <MarketplaceEditionOwnerActions editionId={edition.editionId} activeListings={activeListings} />
         </div>
       </section>
-
-      <Footer />
     </main>
   );
 }

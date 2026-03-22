@@ -7,6 +7,7 @@ import DownloadButton from "./download-button";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { ANIMATION_GUIDE_PATH, CHARACTER_CREATOR_PATH } from "@/lib/mochi-sprite-spec";
+import { openSiteDesktopWindow } from "@/lib/site-desktop-window";
 
 const providers = [
   {
@@ -211,7 +212,7 @@ const configReference: Array<{
   },
 ];
 
-export function HelpSection() {
+export function HelpSection({ embedded = false }: { embedded?: boolean }) {
   const { isSpanish } = useLanguage();
   const [selectedProvider, setSelectedProvider] = useState(providers[0].id);
   const activeProvider = providers.find(provider => provider.id === selectedProvider) ?? providers[0];
@@ -221,7 +222,7 @@ export function HelpSection() {
   };
 
   return (
-    <section id="help" className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
+    <section id="help" className={`${embedded ? "pt-0" : "pt-32"} pb-20 px-4 sm:px-6 lg:px-8`}>
       <ScrollAnimation variants={variants}>
         <div className="w-full mx-auto mb-20">
           <div className="mb-6">
@@ -245,6 +246,10 @@ export function HelpSection() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[26rem]">
                   <Link
                     href={ANIMATION_GUIDE_PATH}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openSiteDesktopWindow("guide", ANIMATION_GUIDE_PATH);
+                    }}
                     className="help-creator-cta help-creator-cta-guide group inline-flex items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-sm font-semibold transition-all"
                   >
                     <span>{isSpanish ? "Guía de animaciones" : "Animation guide"}</span>
@@ -252,6 +257,10 @@ export function HelpSection() {
                   </Link>
                   <Link
                     href={CHARACTER_CREATOR_PATH}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openSiteDesktopWindow("creator", CHARACTER_CREATOR_PATH);
+                    }}
                     className="help-creator-cta help-creator-cta-builder group inline-flex items-center justify-between gap-3 rounded-2xl border px-5 py-4 text-sm font-semibold transition-all"
                   >
                     <span>{isSpanish ? "Creador de personajes" : "Character creator"}</span>

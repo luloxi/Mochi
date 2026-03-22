@@ -9,6 +9,12 @@ export const metadata: Metadata = createPageMetadata({
   path: "/download",
 });
 
-export default function DownloadPage() {
-  return <DownloadClient />;
+export default async function DownloadPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) || {};
+  const embedded = params.embedded === "1";
+  return <DownloadClient embedded={embedded} />;
 }

@@ -142,7 +142,7 @@ export function MarketplaceNftDetailActions({
   openSwapListingsOfferingThis,
 }: Props) {
   const router = useRouter();
-  const { publicKey, isConnected, isConnecting, connect, signTransaction } = useWalletSession();
+  const { publicKey, isConnected, connect, signTransaction } = useWalletSession();
   const { isSpanish } = useLanguage();
   const { reloadCatalog } = useSiteMochi();
 
@@ -431,16 +431,9 @@ export function MarketplaceNftDetailActions({
             {!activeListing.isCommissionEgg ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {!isConnected || !publicKey ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-emerald-500 text-black hover:bg-emerald-400"
-                    onClick={() => void connect()}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {t("Connect wallet", "Conectar wallet")}
-                  </Button>
+                  <p className="rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-muted-foreground">
+                    {t("Connect from the landing header to buy.", "Conecta desde el header del landing para comprar.")}
+                  </p>
                 ) : (
                   <>
                     <select
@@ -572,16 +565,12 @@ export function MarketplaceNftDetailActions({
 
                 <div className="flex flex-wrap gap-2">
                   {!isConnected || !publicKey ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-fuchsia-400 text-fuchsia-950 hover:bg-fuchsia-300"
-                      onClick={() => void connect()}
-                      disabled={isConnecting}
-                    >
-                      {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {t("Connect wallet", "Conectar wallet")}
-                    </Button>
+                    <p className="rounded-lg border border-border bg-white/5 px-3 py-2 text-sm text-muted-foreground">
+                      {t(
+                        "Connect from the landing header to buy a commission.",
+                        "Conecta desde el header del landing para comprar una comisión.",
+                      )}
+                    </p>
                   ) : (
                     <>
                       <select
