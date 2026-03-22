@@ -671,24 +671,32 @@ export function SiteMochiMascot() {
         .getAnimationFiles(files, fallback)
         .map((fileName) => buildSpriteSrc(config.character, fileName, spriteBaseUri));
 
+    const sitFrames = mapUrls(PREVIEW_ANIMATION_SETS.sit, ["sit-edge-legs-down.png"]);
+    const jumpFrames = mapUrls(PREVIEW_ANIMATION_SETS.jump, ["stand-neutral.png"]);
+    const dragFrames = mapUrls(PREVIEW_ANIMATION_SETS.drag, ["stand-neutral.png"]);
+    const walkFrames = mapUrls(
+      ["walk-step-left.png", "stand-neutral.png", "walk-step-right.png", "stand-neutral.png"],
+      ["stand-neutral.png"],
+    );
+    const wallClimbFrames = mapUrls(
+      ["grab-wall.png", "climb-wall-frame-1.png", "grab-wall.png", "climb-wall-frame-2.png"],
+      ["stand-neutral.png"],
+    );
+    const ceilingWalkFrames = mapUrls(
+      ["grab-ceiling.png", "climb-ceiling-frame-1.png", "grab-ceiling.png", "climb-ceiling-frame-2.png"],
+      ["stand-neutral.png"],
+    );
+    const usingComputerFrames = mapUrls(PREVIEW_ANIMATION_SETS.usingComputer, ["sit-pc-edge-legs-down.png"]);
+
     return {
       stand: buildSpriteSrc(config.character, "stand-neutral.png", spriteBaseUri),
-      sit: mapUrls(PREVIEW_ANIMATION_SETS.sit, ["sit-edge-legs-down.png"]),
-      jump: mapUrls(PREVIEW_ANIMATION_SETS.jump, ["stand-neutral.png"]),
-      drag: mapUrls(PREVIEW_ANIMATION_SETS.drag, ["stand-neutral.png"]),
-      walk: mapUrls(
-        ["walk-step-left.png", "stand-neutral.png", "walk-step-right.png", "stand-neutral.png"],
-        ["stand-neutral.png"],
-      ),
-      wallClimb: mapUrls(
-        ["grab-wall.png", "climb-wall-frame-1.png", "grab-wall.png", "climb-wall-frame-2.png"],
-        ["stand-neutral.png"],
-      ),
-      ceilingWalk: mapUrls(
-        ["grab-ceiling.png", "climb-ceiling-frame-1.png", "grab-ceiling.png", "climb-ceiling-frame-2.png"],
-        ["stand-neutral.png"],
-      ),
-      usingComputer: mapUrls(PREVIEW_ANIMATION_SETS.usingComputer, ["sit-pc-edge-legs-down.png"]),
+      sit: sitFrames[0] ?? "",
+      jump: jumpFrames,
+      drag: dragFrames,
+      walk: walkFrames,
+      wallClimb: wallClimbFrames,
+      ceilingWalk: ceilingWalkFrames,
+      usingComputer: usingComputerFrames,
     };
   }, [config.character, nejoPolicy, spriteBaseUri]);
 

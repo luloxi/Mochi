@@ -45,7 +45,7 @@ import type {
 } from "@/lib/marketplace-hub-types";
 import { ShoppingCart, Tag } from "lucide-react";
 
-type MarketplaceHubMode = "all" | "marketplace" | "settings";
+type MarketplaceHubMode = "all" | "marketplace" | "settings" | "creator";
 
 type MarketplaceHubProps = {
   mode?: MarketplaceHubMode;
@@ -189,6 +189,8 @@ export function MarketplaceHub({ mode = "all", variant = "page" }: MarketplaceHu
   const isCreatorOnlyMode = mode === "creator";
   const isWindowVariant = variant === "window";
   const topPaddingClass = isWindowVariant ? "pt-1" : "pt-0";
+  const resolveOwnedTokenName = (tokenUri?: string | null) =>
+    tokenUri ? tokenPreviews[tokenUri]?.name ?? "Mochi" : "Mochi";
 
   useEffect(() => {
     const tokenUris = Array.from(
@@ -883,7 +885,7 @@ export function MarketplaceHub({ mode = "all", variant = "page" }: MarketplaceHu
                           <option value="">{t("Select token", "Seleccionar token")}</option>
                           {studio?.ownedNfts.map((token) => (
                             <option key={token.tokenId} value={token.tokenId}>
-                              #{token.tokenId} — {token.tokenName ?? token.metadata?.name ?? "Mochi"}
+                              #{token.tokenId} — {resolveOwnedTokenName(token.tokenUri)}
                             </option>
                           ))}
                         </select>
@@ -937,7 +939,7 @@ export function MarketplaceHub({ mode = "all", variant = "page" }: MarketplaceHu
                           <option value="">{t("Select token", "Seleccionar token")}</option>
                           {studio?.ownedNfts.filter((token) => !token.isCommissionEgg).map((token) => (
                             <option key={token.tokenId} value={token.tokenId}>
-                              #{token.tokenId} — {token.tokenName ?? token.metadata?.name ?? "Mochi"}
+                              #{token.tokenId} — {resolveOwnedTokenName(token.tokenUri)}
                             </option>
                           ))}
                         </select>
@@ -1004,7 +1006,7 @@ export function MarketplaceHub({ mode = "all", variant = "page" }: MarketplaceHu
                           <option value="">{t("Select token", "Seleccionar token")}</option>
                           {studio?.ownedNfts.map((token) => (
                             <option key={token.tokenId} value={token.tokenId}>
-                              #{token.tokenId} — {token.tokenName ?? token.metadata?.name ?? "Mochi"}
+                              #{token.tokenId} — {resolveOwnedTokenName(token.tokenUri)}
                             </option>
                           ))}
                         </select>
