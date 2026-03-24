@@ -1,4 +1,7 @@
-# Mochi 🐱🐰
+# Mochi Agents
+
+march 24
+project droped by developer, please now have patience while I found a way give pets into util life!
 
 Animated desktop pets with AI chat plus an Avalanche marketplace stack.
 
