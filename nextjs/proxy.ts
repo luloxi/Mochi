@@ -33,6 +33,12 @@ const STATIC_EXT = /\.(png|svg|jpg|jpeg|gif|webp|ico|wav|mp3|md|txt|xml|webmanif
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Redirect old sprite API path to new static path.
+  if (pathname.startsWith("/api/site-mochi/sprite/")) {
+    const newPath = pathname.replace("/api/site-mochi/sprite/", "/sprites/");
+    return NextResponse.redirect(new URL(newPath, request.url), 301);
+  }
+
   // Allow root and all known prefixes through.
   if (pathname === "/" || VALID_PREFIXES.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
