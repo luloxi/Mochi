@@ -1,15 +1,45 @@
 import type { SiteMochiChatMessage } from "@/lib/site-mochi-chat";
-import {
-  buildOpenClawSessionKey,
-  extractOpenClawText,
-  getLastUserMessageText,
-  mergeOpenClawStreamText,
-  nextOpenClawId,
-  normalizeOpenClawGatewayUrl,
-  type OpenClawChatRequestMessage,
-} from "@/lib/site-mochi-openclaw-protocol";
 
-type ChatRequestMessage = OpenClawChatRequestMessage;
+type ChatRequestMessage = { role: "user" | "assistant" | "system"; content: string };
+
+let _ocIdCounter = 0;
+function nextOpenClawId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${++_ocIdCounter}`;
+}
+
+function normalizeOpenClawGatewayUrl(input: string): string {
+  const s = (input || "").trim();
+  const withProtocol = /^[a-z]+:\/\//i.test(s) ? s : `ws://${s}`;
+  const u = new URL(withProtocol);
+  if (u.protocol === "http:") u.protocol = "ws:";
+  if (u.protocol === "https:") u.protocol = "wss:";
+  if (u.protocol !== "ws:" && u.protocol !== "wss:") throw new Error(`OPENCLAW_INVALID_URL:${s}`);
+  return u.toString();
+}
+
+function getLastUserMessageText(messages: ChatRequestMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") return messages[i].content.trim();
+  }
+  return "";
+}
+
+function buildOpenClawSessionKey(agentName: string): string {
+  return `site-mochi:${agentName || "main"}`;
+}
+
+function mergeOpenClawStreamText(current: string, next: string): string {
+  if (!next) return current;
+  if (!current) return next;
+  if (next.startsWith(current)) return next;
+  return current + next;
+}
+
+function extractOpenClawText(payload: Record<string, unknown>): string {
+  if (!payload) return "";
+  const t = payload.text ?? payload.content ?? payload.message ?? payload.output;
+  return typeof t === "string" ? t : "";
+}
 
 function resolveOllamaUrl(rawUrl: string): string {
   const fallback = "http://127.0.0.1:11434";
