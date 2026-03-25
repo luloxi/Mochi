@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Allow: /marketplace
+Allow: /marketplace/
+Allow: /character-creator
+Allow: /animation-guide
+Allow: /help
+Allow: /download
+Allow: /downloads
+Allow: /privacy
+Allow: /profile/
+Allow: /collection
+
+Disallow: /api/
+Disallow: /my-profile
+Disallow: /settings
+Disallow: /auction
+Disallow: /subscription
