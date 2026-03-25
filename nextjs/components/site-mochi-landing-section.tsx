@@ -1479,11 +1479,11 @@ export function SiteMochiLandingSection() {
           ) : null}
 
           <div ref={desktopRef} className="relative z-10 min-h-0 flex-1 overflow-hidden p-5">
-            <div className="flex h-full min-h-0 items-end pb-3 pt-2 lg:hidden">
+            <div className="flex flex-col h-full min-h-0 justify-around pb-3 pt-2 lg:hidden">
               {mobileShortcutRows.map((row, rowIndex) => (
                 <div
                   key={`mobile-row-${rowIndex}`}
-                  className={`grid w-full items-end justify-items-center ${row.length === 4 ? "grid-cols-4" : "grid-cols-5"}`}
+                  className={`grid w-full items-center justify-items-center ${row.length === 2 ? "grid-cols-2 px-[25%]" : "grid-cols-4"}`}
                 >
                   {row.map((shortcutKey) => {
                     const shortcut = shortcutByKey[shortcutKey];
