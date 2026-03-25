@@ -23,7 +23,7 @@ const VALID_PREFIXES = [
   "/sitemap",
   "/icon",
   "/apple-icon",
-  "/openclaw-pairing-agent-template",
+  "/sprites/",
 ];
 
 // Static file extensions served from /public — allow these through so the

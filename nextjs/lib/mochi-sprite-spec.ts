@@ -123,5 +123,5 @@ export function findMissingRequiredSprites(paths: string[]) {
 
 export function animationReferenceSpriteUrl(fileName: string) {
   const safeName = encodeURIComponent(normalizeSpriteFileName(fileName));
-  return `/api/site-mochi/sprite/${encodeURIComponent("shimeji")}/${safeName}`;
+  return `/sprites/${encodeURIComponent("shimeji")}/${safeName}`;
 }

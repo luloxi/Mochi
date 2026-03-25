@@ -140,7 +140,7 @@ async function loadCharacters(): Promise<RuntimeCoreCharacterCatalogEntry[]> {
       return {
         key,
         label: normalizeLabelFromKey(key),
-        iconUrl: `/api/site-mochi/sprite/${encodeURIComponent(key)}/icon.png`,
+        iconUrl: `/sprites/${encodeURIComponent(key)}/icon.png`,
         spritesBaseUri: null,
         availableSpriteFiles,
       };

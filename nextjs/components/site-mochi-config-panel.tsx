@@ -77,7 +77,7 @@ const THEMED_SELECT_CLASS =
   "mochi-themed-select w-full rounded-xl border border-border bg-input/90 px-3 py-2 text-sm text-foreground outline-none focus:border-[var(--brand-accent)]";
 
 function getMascotIdleSpriteSrc(characterKey: string) {
-  return `/api/site-mochi/sprite/${encodeURIComponent(characterKey)}/stand-neutral.png`;
+  return `/sprites/${encodeURIComponent(characterKey)}/stand-neutral.png`;
 }
 
 const DEFAULT_ICON_COMPONENTS: Record<Exclude<ConfigPanelTab, "mascot">, IconType> = {

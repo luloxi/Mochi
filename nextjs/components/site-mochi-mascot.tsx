@@ -487,7 +487,7 @@ function buildSpriteSrc(characterKey: string, fileName: string, spritesBaseUri?:
   if (remoteBase) {
     return `${remoteBase.replace(/\/+$/, "")}/${encodeURIComponent(fileName)}`;
   }
-  return `/api/site-mochi/sprite/${encodeURIComponent(characterKey)}/${encodeURIComponent(fileName)}`;
+  return `/sprites/${encodeURIComponent(characterKey)}/${encodeURIComponent(fileName)}`;
 }
 
 export function SiteMochiMascot() {

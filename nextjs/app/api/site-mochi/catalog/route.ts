@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         label: entry.name,
         iconUrl:
           entry.imageUrl ||
-          `/api/site-mochi/sprite/${encodeURIComponent(entry.id)}/icon.png`,
+          `/sprites/${encodeURIComponent(entry.id)}/icon.png`,
         spritesBaseUri: entry.spritesBaseUri ?? null,
         availableSpriteFiles: [],
       });
