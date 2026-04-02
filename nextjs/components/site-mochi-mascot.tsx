@@ -617,6 +617,7 @@ export function SiteMochiMascot() {
   const bubbleResizeStateRef = useRef<BubbleResizeState | null>(null);
   const bubbleIsResizingRef = useRef(false);
   const bubbleDragStateRef = useRef<BubbleDragState | null>(null);
+  const bubbleDraggedManuallyRef = useRef(false);
   const bubbleRestoreRectRef = useRef<{ left: number; top: number } | null>(null);
   const bubbleRestoreSizeRef = useRef<{ width: number; height: number } | null>(null);
   const spriteScaleRef = useRef(config.sizePercent / 100);
@@ -923,7 +924,7 @@ export function SiteMochiMascot() {
         top = clamp(top, margin, viewportHeight - bubbleHeight - margin);
 
         const prev = bubbleRectRef.current;
-        if (Math.abs(prev.left - left) > 0.5 || Math.abs(prev.top - top) > 0.5) {
+        if (!bubbleDraggedManuallyRef.current && (Math.abs(prev.left - left) > 0.5 || Math.abs(prev.top - top) > 0.5)) {
           bubbleRectRef.current = { left, top };
           bubbleEl.style.left = `${Math.round(left)}px`;
           bubbleEl.style.top = `${Math.round(top)}px`;
@@ -1613,7 +1614,13 @@ export function SiteMochiMascot() {
         bubbleEl.style.left = `${Math.round(nextLeft)}px`;
         bubbleEl.style.top = `${Math.round(nextTop)}px`;
         bubbleRectRef.current = { left: nextLeft, top: nextTop };
+        bubbleDraggedManuallyRef.current = true;
         blockClickRef.current = true;
+
+        const bounds = getBoundsFromWindow(spriteScaleRef.current);
+        const mochiX = clamp(nextLeft + rect.width / 2 - SPRITE_SIZE / 2, bounds.minX, bounds.maxX);
+        const mochiY = clamp(nextTop + rect.height + CHAT_GAP, bounds.minY, bounds.maxY);
+        currentPosRef.current = { x: mochiX, y: mochiY };
 
         if (event.cancelable) {
           event.preventDefault();
