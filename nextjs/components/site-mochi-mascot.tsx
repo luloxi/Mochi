@@ -2184,43 +2184,36 @@ function handleBubblePointerLeave() {
 function handleBubblePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (isBubbleFullscreen) return;
     if (event.pointerType && event.pointerType !== "mouse") return;
+    if (!bubbleRef.current) return;
     const target = event.target as HTMLElement | null;
-    const header = target?.closest(`.${styles.bubbleHeader}`);
-    if (!header && target?.closest("input, button, textarea, select, a")) return;
+    if (target?.closest("input, button, textarea, select, a")) return;
 
     const hit = getBubbleResizeHit(event.clientX, event.clientY);
-    if (!hit.canResize || !bubbleRef.current) return;
-
-    const rect = bubbleRef.current.getBoundingClientRect();
-    bubbleResizeStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startWidth: rect.width,
-      startHeight: rect.height,
-      startLeft: rect.left,
-      startTop: rect.top,
-      left: hit.left,
-      right: hit.right,
-      top: hit.top,
-    };
-    bubbleIsResizingRef.current = true;
-    setBubbleCursor(hit.cursor);
-    try {
-      bubbleRef.current.setPointerCapture(event.pointerId);
-    } catch {
-      // no-op
+    if (hit.canResize) {
+      const rect = bubbleRef.current.getBoundingClientRect();
+      bubbleResizeStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: rect.width,
+        startHeight: rect.height,
+        startLeft: rect.left,
+        startTop: rect.top,
+        left: hit.left,
+        right: hit.right,
+        top: hit.top,
+      };
+      bubbleIsResizingRef.current = true;
+      setBubbleCursor(hit.cursor);
+      try {
+        bubbleRef.current.setPointerCapture(event.pointerId);
+      } catch {
+        // no-op
+      }
+      event.stopPropagation();
+      event.preventDefault();
+      return;
     }
-    event.stopPropagation();
-    event.preventDefault();
-  }
-
-function handleBubbleHeaderPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (isBubbleFullscreen) return;
-    if (event.pointerType && event.pointerType !== "mouse") return;
-    if (bubbleIsResizingRef.current || !bubbleRef.current) return;
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("button, input, textarea, select, a")) return;
 
     const rect = bubbleRef.current.getBoundingClientRect();
     bubbleDragStateRef.current = {
@@ -2316,7 +2309,7 @@ function handleBubbleHeaderPointerDown(event: ReactPointerEvent<HTMLDivElement>)
           onPointerLeave={handleBubblePointerLeave}
           onPointerDown={handleBubblePointerDown}
         >
-          <div className={styles.bubbleHeader} onPointerDown={handleBubbleHeaderPointerDown}>
+          <div className={styles.bubbleHeader}>
             <div className={styles.titleWrap}>
               <div className={styles.title}>{selectedCharacter?.label || "Mochi"}</div>
               <div className={styles.metaText}>
