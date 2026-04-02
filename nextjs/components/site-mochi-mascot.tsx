@@ -1202,7 +1202,7 @@ export function SiteMochiMascot() {
     height: isBubbleFullscreen ? `calc(100dvh - ${bubbleViewportMarginPx * 2}px)` : undefined,
     maxWidth: isBubbleFullscreen ? `calc(100vw - ${bubbleViewportMarginPx * 2}px)` : undefined,
     maxHeight: isBubbleFullscreen ? `calc(100dvh - ${bubbleViewportMarginPx * 2}px)` : undefined,
-    cursor: isBubbleFullscreen ? undefined : bubbleCursor || undefined,
+    cursor: isBubbleFullscreen ? undefined : bubbleCursor || "grab",
     ["--chat-theme" as const]: config.chatThemeColor,
     ["--chat-bg" as const]: config.chatBgColor,
     ["--chat-width" as const]: `${bubbleWidthPx}px`,
@@ -2177,10 +2177,14 @@ export function SiteMochiMascot() {
 
 function handleBubblePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (isBubbleFullscreen) return;
-    if (event.pointerType && event.pointerType !== "mouse") return;
     if (bubbleIsResizingRef.current) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("input, button, textarea, select, a")) {
+      setBubbleCursor("");
+      return;
+    }
     const hit = getBubbleResizeHit(event.clientX, event.clientY);
-    setBubbleCursor(hit.cursor);
+    setBubbleCursor(hit.cursor || "grab");
   }
 
 function handleBubblePointerLeave() {

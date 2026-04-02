@@ -80,6 +80,7 @@
   flex-direction: column;
   position: relative;
   color: var(--bubble-text, #16111f);
+  touch-action: none;
 }
 
 .bubbleFixed {
