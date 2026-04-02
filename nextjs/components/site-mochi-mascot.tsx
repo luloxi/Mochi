@@ -41,7 +41,7 @@ type Msg = {
   streaming?: boolean;
 };
 type VoiceStatusTone = "info" | "error";
-type BubbleResizeCursor = "" | "w-resize" | "e-resize" | "n-resize" | "nw-resize" | "ne-resize";
+type BubbleResizeCursor = "" | "w-resize" | "e-resize" | "n-resize" | "nw-resize" | "ne-resize" | "grab";
 
 type BrowserSpeechRecognitionLike = {
   lang: string;
