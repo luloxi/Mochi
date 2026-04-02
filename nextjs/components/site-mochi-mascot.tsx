@@ -413,6 +413,12 @@ type BubbleResizeState = {
   top: boolean;
 };
 
+type BubbleDragState = {
+  pointerId: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 function sanitizeStoredMessages(input: unknown): Msg[] {
   if (!Array.isArray(input)) return [];
 
@@ -610,6 +616,7 @@ export function SiteMochiMascot() {
   const bubbleRectRef = useRef({ left: 8, top: 8 });
   const bubbleResizeStateRef = useRef<BubbleResizeState | null>(null);
   const bubbleIsResizingRef = useRef(false);
+  const bubbleDragStateRef = useRef<BubbleDragState | null>(null);
   const bubbleRestoreRectRef = useRef<{ left: number; top: number } | null>(null);
   const bubbleRestoreSizeRef = useRef<{ width: number; height: number } | null>(null);
   const spriteScaleRef = useRef(config.sizePercent / 100);
@@ -1595,8 +1602,25 @@ export function SiteMochiMascot() {
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
-      const resizeState = bubbleResizeStateRef.current;
+      const bubbleDragState = bubbleDragStateRef.current;
       const bubbleEl = bubbleRef.current;
+      if (bubbleDragState && bubbleEl && !bubbleIsResizingRef.current) {
+        const { width: viewportWidth, height: viewportHeight } = getViewportSize();
+        const rect = bubbleEl.getBoundingClientRect();
+        const nextLeft = clamp(event.clientX - bubbleDragState.offsetX, 0, Math.max(0, viewportWidth - rect.width));
+        const nextTop = clamp(event.clientY - bubbleDragState.offsetY, 0, Math.max(0, viewportHeight - rect.height));
+
+        bubbleEl.style.left = `${Math.round(nextLeft)}px`;
+        bubbleEl.style.top = `${Math.round(nextTop)}px`;
+        bubbleRectRef.current = { left: nextLeft, top: nextTop };
+
+        if (event.cancelable) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      const resizeState = bubbleResizeStateRef.current;
       if (!resizeState || !bubbleEl) return;
 
       const dx = event.clientX - resizeState.startX;
@@ -1638,6 +1662,20 @@ export function SiteMochiMascot() {
     };
 
     const stopResize = (event?: PointerEvent) => {
+      const bubbleDragState = bubbleDragStateRef.current;
+      if (bubbleDragState) {
+        bubbleDragStateRef.current = null;
+        try {
+          bubbleRef.current?.releasePointerCapture?.(bubbleDragState.pointerId);
+        } catch {
+          // no-op
+        }
+        if (event?.cancelable) {
+          event.preventDefault();
+        }
+        return;
+      }
+
       const resizeState = bubbleResizeStateRef.current;
       if (!resizeState) return;
       bubbleResizeStateRef.current = null;
@@ -2147,7 +2185,8 @@ function handleBubblePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (isBubbleFullscreen) return;
     if (event.pointerType && event.pointerType !== "mouse") return;
     const target = event.target as HTMLElement | null;
-    if (target?.closest("input, button, textarea, select, a")) return;
+    const header = target?.closest(`.${styles.bubbleHeader}`);
+    if (!header && target?.closest("input, button, textarea, select, a")) return;
 
     const hit = getBubbleResizeHit(event.clientX, event.clientY);
     if (!hit.canResize || !bubbleRef.current) return;
@@ -2167,6 +2206,28 @@ function handleBubblePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     };
     bubbleIsResizingRef.current = true;
     setBubbleCursor(hit.cursor);
+    try {
+      bubbleRef.current.setPointerCapture(event.pointerId);
+    } catch {
+      // no-op
+    }
+    event.stopPropagation();
+    event.preventDefault();
+  }
+
+function handleBubbleHeaderPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (isBubbleFullscreen) return;
+    if (event.pointerType && event.pointerType !== "mouse") return;
+    if (bubbleIsResizingRef.current || !bubbleRef.current) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, input, textarea, select, a")) return;
+
+    const rect = bubbleRef.current.getBoundingClientRect();
+    bubbleDragStateRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
     try {
       bubbleRef.current.setPointerCapture(event.pointerId);
     } catch {
@@ -2255,7 +2316,7 @@ function handleBubblePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
           onPointerLeave={handleBubblePointerLeave}
           onPointerDown={handleBubblePointerDown}
         >
-          <div className={styles.bubbleHeader}>
+          <div className={styles.bubbleHeader} onPointerDown={handleBubbleHeaderPointerDown}>
             <div className={styles.titleWrap}>
               <div className={styles.title}>{selectedCharacter?.label || "Mochi"}</div>
               <div className={styles.metaText}>
