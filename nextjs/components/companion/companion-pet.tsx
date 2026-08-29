@@ -1,56 +1,178 @@
 "use client";
 
-import type { PetMood } from "@/lib/companion/companion-core";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  SPRITE_SIZE,
+  TICK_MS,
+  beginDragPending,
+  createMascot,
+  createWorkingMascot,
+  endDrag,
+  mascotDrawBox,
+  moveDrag,
+  setWorking,
+  spriteUrl,
+  tickShimeji,
+  type Bounds,
+  type Perch,
+  type ShimejiMascot,
+} from "@/lib/companion/shimeji-engine";
 
 type CompanionPetProps = {
-  mood: PetMood;
-  size?: "desktop" | "mobile";
+  working: boolean;
+  perch: Perch | null;
+  scale?: number;
+  label?: string;
+  onClick?: () => void;
 };
 
-export function CompanionPet({ mood, size = "desktop" }: CompanionPetProps) {
+function useBounds(node: HTMLElement | null): Bounds {
+  const [bounds, setBounds] = useState<Bounds>({
+    width: typeof window === "undefined" ? 800 : window.innerWidth,
+    height: typeof window === "undefined" ? 600 : window.innerHeight,
+  });
+  useEffect(() => {
+    const read = () => {
+      if (node) {
+        const r = node.getBoundingClientRect();
+        setBounds({ width: Math.max(1, r.width), height: Math.max(1, r.height) });
+      } else {
+        setBounds({ width: window.innerWidth, height: window.innerHeight });
+      }
+    };
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, [node]);
+  return bounds;
+}
+
+export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: CompanionPetProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const mascotRef = useRef<ShimejiMascot | null>(null);
+  const cursorY = useRef<number | null>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  const [, setTick] = useState(0);
+  const bounds = useBounds(host);
+
+  useEffect(() => {
+    setHost(hostRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!mascotRef.current) mascotRef.current = createMascot(bounds, scale);
+  }, [bounds, scale]);
+
+  useEffect(() => {
+    if (mascotRef.current) setWorking(mascotRef.current, working);
+  }, [working]);
+
+  useEffect(() => {
+    const onMove = (event: MouseEvent) => {
+      cursorY.current = event.clientY;
+    };
+    window.addEventListener("mousemove", onMove);
+    const id = window.setInterval(() => {
+      const m = mascotRef.current;
+      if (!m) return;
+      tickShimeji(m, bounds, scale, cursorY.current, perch);
+      setTick((n) => (n + 1) % 1_000_000);
+    }, TICK_MS);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.clearInterval(id);
+    };
+  }, [bounds, perch, scale]);
+
+  const m = mascotRef.current;
+  const box = m ? mascotDrawBox(m, scale) : { left: 0, top: 0, size: SPRITE_SIZE * scale };
+
+  function pointerDown(event: PointerEvent<HTMLButtonElement>) {
+    const mascot = mascotRef.current;
+    if (!mascot) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    beginDragPending(mascot, event.clientX, event.clientY, scale);
+  }
+  function pointerMove(event: PointerEvent<HTMLButtonElement>) {
+    const mascot = mascotRef.current;
+    if (!mascot) return;
+    moveDrag(mascot, event.clientX, event.clientY, bounds, scale);
+    setTick((n) => (n + 1) % 1_000_000);
+  }
+  function pointerUp(event: PointerEvent<HTMLButtonElement>) {
+    const mascot = mascotRef.current;
+    if (!mascot) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+    const result = endDrag(mascot);
+    if (result === "click") onClick?.();
+    setTick((n) => (n + 1) % 1_000_000);
+  }
+
   return (
-    <div
-      className={`companion-pet companion-pet--${mood} companion-pet--${size}`}
-      aria-label="Mochi, la compañera"
-      role="img"
-    >
-      <div className="companion-pet-stage" aria-hidden>
-        <svg viewBox="0 0 220 240" className="companion-pet-svg" fill="none">
-          <ellipse className="pet-shadow" cx="110" cy="218" rx="58" ry="10" />
-          <g className="pet-body-group">
-            <path className="pet-ear pet-ear-left" d="M62 78 C48 22 86 18 94 72" />
-            <path className="pet-ear-inner pet-ear-left" d="M68 74 C60 36 82 34 88 72" />
-            <path className="pet-ear pet-ear-right" d="M158 78 C172 22 134 18 126 72" />
-            <path className="pet-ear-inner pet-ear-right" d="M152 74 C160 36 138 34 132 72" />
-            <ellipse className="pet-body" cx="110" cy="132" rx="78" ry="70" />
-            <ellipse className="pet-belly" cx="110" cy="150" rx="46" ry="36" />
-            <ellipse className="pet-blush pet-blush-left" cx="62" cy="138" rx="12" ry="7" />
-            <ellipse className="pet-blush pet-blush-right" cx="158" cy="138" rx="12" ry="7" />
-            <g className="pet-eyes">
-              <ellipse className="pet-eye" cx="84" cy="124" rx="9" ry="11" />
-              <ellipse className="pet-eye" cx="136" cy="124" rx="9" ry="11" />
-              <circle className="pet-spark" cx="81" cy="120" r="2.4" />
-              <circle className="pet-spark" cx="133" cy="120" r="2.4" />
-              <rect className="pet-lid pet-lid-left" x="74" y="112" width="20" height="14" rx="7" />
-              <rect className="pet-lid pet-lid-right" x="126" y="112" width="20" height="14" rx="7" />
-            </g>
-            <path className="pet-nose" d="M110 136 C107 136 105 138 110 141 C115 138 113 136 110 136Z" />
-            <path className="pet-mouth" d="M102 146 Q110 152 118 146" />
-            <ellipse className="pet-paw" cx="58" cy="178" rx="16" ry="11" />
-            <ellipse className="pet-paw" cx="162" cy="178" rx="16" ry="11" />
-            <ellipse className="pet-tail" cx="186" cy="158" rx="16" ry="12" />
-          </g>
-        </svg>
-      </div>
-      {mood === "sleepy" ? <span className="pet-zzz">zzz</span> : null}
-      {mood === "delivering" ? <span className="pet-note">✉</span> : null}
-      {mood === "thinking" ? (
-        <span className="pet-think-dots" aria-hidden>
-          <i />
-          <i />
-          <i />
-        </span>
+    <div ref={hostRef} className="companion-overlay" aria-hidden={false}>
+      {m ? (
+        <button
+          type="button"
+          className={`companion-mascot${m.isDragging ? " is-dragging" : ""}`}
+          style={{
+            left: box.left,
+            top: box.top,
+            width: box.size,
+            height: box.size,
+            backgroundImage: `url("${spriteUrl(m.spriteKey)}")`,
+            transform: m.transform,
+            cursor: m.isDragging ? "grabbing" : "grab",
+          }}
+          aria-label="Mochi, arrastrala o mirala caminar"
+          onPointerDown={pointerDown}
+          onPointerMove={pointerMove}
+          onPointerUp={pointerUp}
+          onPointerCancel={pointerUp}
+        />
       ) : null}
     </div>
+  );
+}
+
+export function CompanionWorkingSprite({
+  scale = 0.62,
+  facingRight = false,
+}: {
+  scale?: number;
+  facingRight?: boolean;
+}) {
+  const mascotRef = useRef<ShimejiMascot | null>(null);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const m = createWorkingMascot();
+    m.facingRight = facingRight;
+    mascotRef.current = m;
+    const id = window.setInterval(() => {
+      tickShimeji(m, { width: 180, height: 140 }, scale, null, { x: 16, y: SPRITE_SIZE * scale });
+      setTick((n) => (n + 1) % 1_000_000);
+    }, TICK_MS);
+    return () => window.clearInterval(id);
+  }, [facingRight, scale]);
+
+  const m = mascotRef.current;
+  if (!m) return null;
+  const size = SPRITE_SIZE * scale;
+  return (
+    <div
+      className="companion-working-sprite"
+      style={{
+        width: size,
+        height: size,
+        backgroundImage: `url("${spriteUrl(m.spriteKey)}")`,
+        transform: facingRight ? "scaleX(-1)" : "scaleX(1)",
+      }}
+      role="img"
+      aria-label="Mochi trabajando en la compu"
+    />
   );
 }

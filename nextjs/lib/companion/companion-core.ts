@@ -23,6 +23,14 @@ export type TodoItem = {
   createdAt: string;
 };
 
+export type AgentJob = {
+  id: PersonId;
+  working: boolean;
+  label: string;
+  startedAt: string | null;
+  ticks: number;
+};
+
 export type CompanionIntent =
   | { type: "chat" }
   | { type: "pomodoro"; action: "start" | "pause" | "reset" | "skip"; minutes?: number }
@@ -37,6 +45,7 @@ export const COMPANION_STORAGE = {
   privateChat: "mochi-companion-private-chat-v1",
   todos: "mochi-companion-todos-v1",
   video: "mochi-companion-video-v1",
+  agents: "mochi-companion-agents-v1",
 } as const;
 
 export const PEOPLE: Record<
@@ -122,6 +131,74 @@ export function loadVideoUrl(): string {
 
 export function saveVideoUrl(url: string) {
   writeJson(COMPANION_STORAGE.video, url);
+}
+
+
+const DEFAULT_AGENTS: AgentJob[] = [
+  { id: "katho", working: false, label: "", startedAt: null, ticks: 0 },
+  { id: "lulox", working: false, label: "", startedAt: null, ticks: 0 },
+];
+
+export function loadAgents(): AgentJob[] {
+  const rows = readJson<AgentJob[]>(COMPANION_STORAGE.agents, DEFAULT_AGENTS);
+  if (!Array.isArray(rows) || rows.length === 0) return DEFAULT_AGENTS.map((row) => ({ ...row }));
+  return DEFAULT_AGENTS.map((base) => {
+    const found = rows.find((row) => row && row.id === base.id);
+    if (!found) return { ...base };
+    return {
+      id: base.id,
+      working: !!found.working,
+      label: typeof found.label === "string" ? found.label : "",
+      startedAt: typeof found.startedAt === "string" ? found.startedAt : null,
+      ticks: typeof found.ticks === "number" && Number.isFinite(found.ticks) ? found.ticks : 0,
+    };
+  });
+}
+
+export function saveAgents(rows: AgentJob[]) {
+  writeJson(COMPANION_STORAGE.agents, rows);
+}
+
+export function toggleAgentWorking(rows: AgentJob[], id: PersonId, label?: string): AgentJob[] {
+  return rows.map((row) => {
+    if (row.id !== id) return row;
+    if (row.working) {
+      return { ...row, working: false, label: "", startedAt: null };
+    }
+    return {
+      ...row,
+      working: true,
+      label: (label || row.label || "en la compu").trim(),
+      startedAt: nowIso(),
+      ticks: 0,
+    };
+  });
+}
+
+export function formatWorkClock(ticks: number): string {
+  const m = Math.floor(ticks / 60);
+  const s = ticks % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+let agentTicker: number | null = null;
+
+export function startCompanionRuntime() {
+  if (typeof window === "undefined") return;
+  if (agentTicker != null) return;
+  agentTicker = window.setInterval(() => {
+    const agents = loadAgents();
+    let changed = false;
+    const next = agents.map((row) => {
+      if (!row.working) return row;
+      changed = true;
+      return { ...row, ticks: row.ticks + 1 };
+    });
+    if (changed) {
+      saveAgents(next);
+      window.dispatchEvent(new Event("mochi-companion-agents"));
+    }
+  }, 1000);
 }
 
 export function otherPerson(seat: PersonId): PersonId {
@@ -339,4 +416,5 @@ Sos Mochi, la compañera del medio.
 - Si te piden preguntarle al agente del sitio, lo preguntás VOS y después contás la respuesta.
 - No inventes conexiones, bots, ni botones falsos. Si algo no está, decilo con honestidad.
 - No prometas servidores que no existen. El chat de las dos vive en este navegador.
+- Katho y Lulox son personas-agente. Si las dejan trabajando, siguen en esta pestaña del navegador, no en la nube.
 `;

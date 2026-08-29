@@ -8,7 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import Link from "next/link";
-import { CompanionPet } from "@/components/companion/companion-pet";
+import { CompanionWanderer, CompanionWorkingSprite } from "@/components/companion/companion-pet";
 import { useSiteMochi } from "@/components/site-mochi-provider";
 import { buildSiteMochiChatMessages } from "@/lib/site-mochi-chat";
 import {
@@ -21,6 +21,7 @@ import {
   COMPANION_SOUL,
   COMPANION_STORAGE,
   PEOPLE,
+  type AgentJob,
   type CompanionIntent,
   type CompanionMsg,
   type PersonId,
@@ -28,6 +29,8 @@ import {
   type PrivateMsg,
   type TodoItem,
   extractYouTubeId,
+  formatWorkClock,
+  loadAgents,
   loadPetChat,
   loadPrivateChat,
   loadSeat,
@@ -36,11 +39,14 @@ import {
   localMochiReply,
   otherPerson,
   parseCompanionIntent,
+  saveAgents,
   savePetChat,
   savePrivateChat,
   saveSeat,
   saveTodos,
   saveVideoUrl,
+  startCompanionRuntime,
+  toggleAgentWorking,
   uid,
   nowIso,
 } from "@/lib/companion/companion-core";
@@ -224,6 +230,12 @@ export function CompanionSurface() {
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
   const [mood, setMood] = useState<PetMood>("idle");
+  const [agents, setAgents] = useState<AgentJob[]>([
+    { id: "katho", working: false, label: "", startedAt: null, ticks: 0 },
+    { id: "lulox", working: false, label: "", startedAt: null, ticks: 0 },
+  ]);
+  const [perch, setPerch] = useState<{ x: number; y: number } | null>(null);
+  const [agentLabelDraft, setAgentLabelDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<MobileTab>("mochi");
   const [pomoSeconds, setPomoSeconds] = useState(25 * 60);
   const [pomoTotal, setPomoTotal] = useState(25 * 60);
@@ -232,15 +244,18 @@ export function CompanionSurface() {
   const hydrated = useRef(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const mobileLogRef = useRef<HTMLDivElement | null>(null);
+  const mochiWorking = sending || mood === "thinking";
 
   useEffect(() => {
     setSeat(loadSeat());
     setPetChat(loadPetChat());
     setPrivateChat(loadPrivateChat());
     setTodos(loadTodos());
+    setAgents(loadAgents());
     const storedVideo = loadVideoUrl();
     setVideoUrl(storedVideo);
     setVideoDraft(storedVideo);
+    startCompanionRuntime();
     hydrated.current = true;
   }, []);
 
@@ -256,9 +271,16 @@ export function CompanionSurface() {
       }
       if (event.key === COMPANION_STORAGE.petChat) setPetChat(loadPetChat());
       if (event.key === COMPANION_STORAGE.seat) setSeat(loadSeat());
+      if (event.key === COMPANION_STORAGE.agents) setAgents(loadAgents());
     };
+    const onAgents = () => setAgents(loadAgents());
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("mochi-companion-agents", onAgents);
+    startCompanionRuntime();
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("mochi-companion-agents", onAgents);
+    };
   }, []);
 
   useEffect(() => {
@@ -281,6 +303,25 @@ export function CompanionSurface() {
     if (!hydrated.current) return;
     saveVideoUrl(videoUrl);
   }, [videoUrl]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    saveAgents(agents);
+  }, [agents]);
+
+  useEffect(() => {
+    if (!mochiWorking || isMobile) {
+      setPerch(null);
+      return;
+    }
+    const el = document.querySelector(".room-window");
+    if (!(el instanceof HTMLElement)) {
+      setPerch(null);
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    const size = 128 * 0.72;
+    setPerch({ x: r.left + r.width * 0.58 - size / 2, y: r.top + 28 });
+  }, [mochiWorking, isMobile]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -528,6 +569,16 @@ export function CompanionSurface() {
     setPrivateDraft("");
   }
 
+  function leaveWorking(id: PersonId) {
+    setAgents((prev) => {
+      const next = toggleAgentWorking(prev, id, agentLabelDraft);
+      saveAgents(next);
+      return next;
+    });
+    setAgentLabelDraft("");
+  }
+
+
   const pomoPanel = (
     <section className="companion-card">
       <h2>Pomodoro</h2>
@@ -632,9 +683,57 @@ export function CompanionSurface() {
     </section>
   );
 
+  const agentsPanel = (
+    <section className="companion-card">
+      <h2>Agentes</h2>
+      <p className="empty-note">
+        Katho y Lulox son personas-agente. Si las dejás trabajando, siguen en este navegador
+        aunque cambies de pestaña de esta pieza. No hay workers en la nube: si cerrás la
+        pestaña del browser, se pausan.
+      </p>
+      <div className="agent-label-row">
+        <input
+          value={agentLabelDraft}
+          onChange={(event) => setAgentLabelDraft(event.target.value)}
+          placeholder="En qué están (opcional)"
+        />
+      </div>
+      <div className="agent-desks">
+        {agents.map((agent) => (
+          <article key={agent.id} className={`agent-desk${agent.working ? " is-working" : ""}`}>
+            <div className="agent-desk-chrome">
+              <span className="traffic" aria-hidden />
+              <span className="desk-title">{PEOPLE[agent.id].name}</span>
+            </div>
+            <div className="agent-desk-screen">
+              {agent.working ? (
+                <CompanionWorkingSprite facingRight={agent.id === "lulox"} />
+              ) : (
+                <p className="desk-idle">compu apagada</p>
+              )}
+            </div>
+            <div className="agent-desk-meta">
+              <strong>{agent.working ? "Trabajando" : "Idle"}</strong>
+              {agent.working ? (
+                <span>
+                  {agent.label || "en la compu"} · {formatWorkClock(agent.ticks)}
+                </span>
+              ) : (
+                <span>puede deambular</span>
+              )}
+              <button type="button" className="ghost-btn" onClick={() => leaveWorking(agent.id)}>
+                {agent.working ? "Dejar idle" : "Dejar trabajando"}
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+
   const privatePanel = (
     <section className="companion-card companion-grow">
-      <h2>Nosotras dos</h2>
+      <h2>DM · nosotras dos</h2>
       <div className="seat-row">
         {(["katho", "lulox"] as PersonId[]).map((id) => (
           <button
@@ -724,6 +823,7 @@ export function CompanionSurface() {
 
   return (
     <div className="companion-root" data-companion-surface>
+      <CompanionWanderer working={mochiWorking} perch={perch} scale={isMobile ? 0.55 : 0.72} />
       <Link href="/" className="companion-back">
         ← al sitio
       </Link>
@@ -735,15 +835,24 @@ export function CompanionSurface() {
             {todosPanel}
           </div>
           <div className="companion-stage">
-            <CompanionPet mood={mood} size="desktop" />
-            {speech}
+            <div className="room-window" data-companion-perch={sending || mood === "thinking" ? "on" : "off"}>
+              <div className="room-window-chrome">
+                <span className="traffic" aria-hidden />
+                <span>Mochi</span>
+              </div>
+              <div className="room-window-body">
+                {speech}
+              </div>
+            </div>
             {composerForm}
             <p className="companion-hint">
-              Ella es el centro. Pedile un pomodoro, un video, una nota, un recado, o que le
-              pregunte al agente del sitio.
+              Ella camina la pieza con los sprites de Katho. Idle deambula; si el agente está
+              trabajando se sienta en el borde de la compu. Pedile un pomodoro, un video, una
+              nota, un recado, o que le pregunte al agente del sitio.
             </p>
           </div>
           <div className="companion-col">
+            {agentsPanel}
             {privatePanel}
             {videoPanel}
           </div>
@@ -754,7 +863,6 @@ export function CompanionSurface() {
         <div className="companion-mobile">
           {mobileTab === "mochi" ? (
             <div className="mobile-mochi">
-              <CompanionPet mood={mood} size="mobile" />
               <div className="mobile-log" ref={mobileLogRef} aria-live="polite">
                 {petChat.length === 0 ? (
                   <div className="speech-bubble mochi">
@@ -779,7 +887,12 @@ export function CompanionSurface() {
               {mobileTab === "pomo" ? pomoPanel : null}
               {mobileTab === "notas" ? todosPanel : null}
               {mobileTab === "video" ? videoPanel : null}
-              {mobileTab === "nosotras" ? privatePanel : null}
+              {mobileTab === "nosotras" ? (
+                <>
+                  {agentsPanel}
+                  {privatePanel}
+                </>
+              ) : null}
             </div>
           )}
           <nav className="mobile-dock" aria-label="Pieza móvil">
