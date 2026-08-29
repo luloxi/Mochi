@@ -1,0 +1,726 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import Link from "next/link";
+import { CompanionPet } from "@/components/companion/companion-pet";
+import { useSiteMochi } from "@/components/site-mochi-provider";
+import { buildSiteMochiChatMessages } from "@/lib/site-mochi-chat";
+import {
+  formatSiteMochiProviderError,
+  sendBitteBrowserChat,
+  sendOllamaBrowserChat,
+} from "@/lib/site-mochi-browser-providers";
+import {
+  COMPANION_SOUL,
+  PEOPLE,
+  type CompanionIntent,
+  type CompanionMsg,
+  type PersonId,
+  type PetMood,
+  type PrivateMsg,
+  type TodoItem,
+  extractYouTubeId,
+  loadPetChat,
+  loadPrivateChat,
+  loadSeat,
+  loadTodos,
+  loadVideoUrl,
+  localMochiReply,
+  otherPerson,
+  parseCompanionIntent,
+  savePetChat,
+  savePrivateChat,
+  saveSeat,
+  saveTodos,
+  saveVideoUrl,
+  uid,
+  nowIso,
+} from "@/lib/companion/companion-core";
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 899px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return isMobile;
+}
+
+type MobileTab = "mochi" | "pomo" | "notas" | "video" | "nosotras";
+
+function parseSseBlock(block: string) {
+  const lines = block.split(/\r?\n/);
+  let event = "message";
+  const dataParts: string[] = [];
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) event = line.slice(6).trim() || "message";
+    else if (line.startsWith("data:")) dataParts.push(line.slice(5).replace(/^\s/, ""));
+  }
+  return { event, data: dataParts.join("\n").trim() };
+}
+
+async function streamSiteReply(body: Record<string, unknown>): Promise<string> {
+  const response = await fetch("/api/mochi-chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok || !contentType.includes("text/event-stream")) {
+    const json = await response.json().catch(() => null);
+    const reply = typeof json?.reply === "string" ? json.reply.trim() : "";
+    if (reply) return reply;
+    const errorCode = typeof json?.error === "string" ? json.error : "bad-response";
+    throw new Error(errorCode);
+  }
+  if (!response.body) throw new Error("STREAM_UNAVAILABLE");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let reply = "";
+
+  const process = (block: string) => {
+    const { event, data } = parseSseBlock(block);
+    if (!data) return false;
+    if (event === "token") {
+      try {
+        const payload = JSON.parse(data);
+        if (typeof payload?.text === "string") reply += payload.text;
+      } catch {
+        return false;
+      }
+      return false;
+    }
+    if (event === "done") {
+      try {
+        const payload = JSON.parse(data);
+        if (typeof payload?.reply === "string" && payload.reply.trim()) {
+          reply = payload.reply.trim();
+        }
+      } catch {
+        // keep accumulated
+      }
+      return true;
+    }
+    if (event === "error") {
+      let payload: { error?: string } = {};
+      try {
+        payload = JSON.parse(data);
+      } catch {
+        throw new Error("STREAM_ERROR");
+      }
+      throw new Error(typeof payload.error === "string" ? payload.error : "STREAM_ERROR");
+    }
+    return false;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      if (process(block)) return reply.trim();
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+  if (buffer.trim()) process(buffer);
+  return reply.trim();
+}
+
+function formatClock(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function VideoFrame({ url }: { url: string }) {
+  const yt = extractYouTubeId(url);
+  if (yt) {
+    return (
+      <div className="video-stage">
+        <iframe
+          title="Video"
+          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt)}`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+  if (url) {
+    return (
+      <div className="video-stage">
+        <iframe title="URL" src={url} sandbox="allow-scripts allow-same-origin allow-presentation" />
+      </div>
+    );
+  }
+  return (
+    <p className="empty-note">
+      Pegá un YouTube o una URL. Hasta que no haya nada, este rincón queda en silencio. No hay
+      playlist inventada.
+    </p>
+  );
+}
+
+export function CompanionSurface() {
+  const { config, canUseCurrentProvider, incrementFreeSiteMessagesUsed } = useSiteMochi();
+  const isMobile = useIsMobile();
+  const [seat, setSeat] = useState<PersonId | null>(null);
+  const [petChat, setPetChat] = useState<CompanionMsg[]>([]);
+  const [privateChat, setPrivateChat] = useState<PrivateMsg[]>([]);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoDraft, setVideoDraft] = useState("");
+  const [todoDraft, setTodoDraft] = useState("");
+  const [privateDraft, setPrivateDraft] = useState("");
+  const [composer, setComposer] = useState("");
+  const [sending, setSending] = useState(false);
+  const [mood, setMood] = useState<PetMood>("idle");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("mochi");
+  const [pomoSeconds, setPomoSeconds] = useState(25 * 60);
+  const [pomoRunning, setPomoRunning] = useState(false);
+  const [pomoMode, setPomoMode] = useState<"foco" | "descanso">("foco");
+  const hydrated = useRef(false);
+  const logRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSeat(loadSeat());
+    setPetChat(loadPetChat());
+    setPrivateChat(loadPrivateChat());
+    setTodos(loadTodos());
+    const storedVideo = loadVideoUrl();
+    setVideoUrl(storedVideo);
+    setVideoDraft(storedVideo);
+    hydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    saveSeat(seat);
+  }, [seat]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    savePetChat(petChat);
+  }, [petChat]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    savePrivateChat(privateChat);
+  }, [privateChat]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    saveTodos(todos);
+  }, [todos]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    saveVideoUrl(videoUrl);
+  }, [videoUrl]);
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+  }, [petChat, sending]);
+
+  useEffect(() => {
+    if (!pomoRunning) return;
+    const t = window.setInterval(() => {
+      setPomoSeconds((prev) => {
+        if (prev > 1) return prev - 1;
+        window.clearInterval(t);
+        setPomoRunning(false);
+        setPomoMode((mode) => (mode === "foco" ? "descanso" : "foco"));
+        setMood(pomoMode === "foco" ? "sleepy" : "happy");
+        return pomoMode === "foco" ? 5 * 60 : 25 * 60;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [pomoRunning, pomoMode]);
+
+  useEffect(() => {
+    if (pomoRunning && pomoMode === "foco") setMood("listening");
+    if (pomoRunning && pomoMode === "descanso") setMood("sleepy");
+  }, [pomoRunning, pomoMode]);
+
+  const pushMochi = useCallback((content: string) => {
+    setPetChat((prev) => [
+      ...prev,
+      { id: uid("mochi"), role: "mochi", content, createdAt: nowIso() },
+    ]);
+  }, []);
+
+  const applyIntent = useCallback(
+    (intent: CompanionIntent) => {
+      if (intent.type === "pomodoro") {
+        if (intent.action === "pause") setPomoRunning(false);
+        else if (intent.action === "reset") {
+          setPomoRunning(false);
+          setPomoMode("foco");
+          setPomoSeconds(25 * 60);
+        } else if (intent.action === "skip") {
+          const next = pomoMode === "foco" ? "descanso" : "foco";
+          setPomoMode(next);
+          setPomoSeconds(next === "foco" ? 25 * 60 : 5 * 60);
+          setPomoRunning(true);
+        } else {
+          setPomoMode("foco");
+          setPomoSeconds((intent.minutes || 25) * 60);
+          setPomoRunning(true);
+        }
+      }
+
+      if (intent.type === "todo" && intent.action === "add" && intent.text) {
+        setTodos((prev) => [
+          ...prev,
+          { id: uid("todo"), text: intent.text!, done: false, createdAt: nowIso() },
+        ]);
+      }
+      if (intent.type === "todo" && intent.action === "done" && intent.text) {
+        const needle = intent.text.toLowerCase();
+        setTodos((prev) =>
+          prev.map((item) =>
+            !item.done && item.text.toLowerCase().includes(needle) ? { ...item, done: true } : item,
+          ),
+        );
+      }
+      if (intent.type === "video") {
+        setVideoUrl(intent.url);
+        setVideoDraft(intent.url);
+      }
+      if (intent.type === "message-person") {
+        const fromName = seat ? PEOPLE[seat].name : "alguien";
+        setPrivateChat((prev) => [
+          ...prev,
+          {
+            id: uid("priv"),
+            from: "mochi",
+            content: `${PEOPLE[intent.to].name}, ${fromName} me pidió que te diga: ${intent.text}`,
+            createdAt: nowIso(),
+          },
+        ]);
+        setMood("delivering");
+      }
+    },
+    [pomoMode, seat],
+  );
+
+  const askSiteAgent = useCallback(
+    async (message: string, history: CompanionMsg[]) => {
+      const chatHistory = history
+        .filter((row) => !row.content.startsWith("..."))
+        .slice(-10)
+        .map((row) => ({
+          role: row.role === "user" ? ("user" as const) : ("assistant" as const),
+          content: row.content,
+        }));
+      const payloadMessages = buildSiteMochiChatMessages({
+        message,
+        history: chatHistory,
+        language: "es",
+        characterLabel: "Mochi",
+        soulMd: COMPANION_SOUL,
+      });
+
+      if (config.provider === "ollama") {
+        return sendOllamaBrowserChat({
+          messages: payloadMessages,
+          ollamaUrl: config.ollamaUrl,
+          ollamaModel: config.ollamaModel,
+        });
+      }
+      if (config.provider === "bitte") {
+        return sendBitteBrowserChat({
+          messages: payloadMessages,
+          bitteApiKey: config.bitteApiKey,
+          bitteAgentId: config.bitteAgentId,
+        });
+      }
+      if (!canUseCurrentProvider) {
+        throw new Error(config.provider === "site" ? "NO_CREDITS" : "OPENROUTER_DETAIL:Falta la API key");
+      }
+      const reply = await streamSiteReply({
+        message,
+        history: chatHistory,
+        lang: "es",
+        character: config.character,
+        soulMd: COMPANION_SOUL,
+        provider: config.provider === "openrouter" ? "openrouter" : "site",
+        providerConfig: {
+          openrouterApiKey: config.openrouterApiKey,
+          openrouterModel: config.openrouterModel,
+        },
+      });
+      if (config.provider === "site") incrementFreeSiteMessagesUsed();
+      return reply;
+    },
+    [canUseCurrentProvider, config, incrementFreeSiteMessagesUsed],
+  );
+
+  async function handleTalk(text: string) {
+    const message = text.trim();
+    if (!message || sending) return;
+    setComposer("");
+    const userMsg: CompanionMsg = {
+      id: uid("user"),
+      role: "user",
+      content: message,
+      createdAt: nowIso(),
+    };
+    const nextHistory = [...petChat, userMsg];
+    setPetChat(nextHistory);
+    setSending(true);
+    setMood("listening");
+
+    const intent = parseCompanionIntent(message);
+    applyIntent(intent);
+
+    try {
+      if (intent.type === "ask-agent") {
+        setMood("thinking");
+        try {
+          const agentReply = await askSiteAgent(intent.text, nextHistory);
+          pushMochi(`El agente del sitio me dijo:\n${agentReply}`);
+          setMood("happy");
+        } catch (error) {
+          pushMochi(
+            formatSiteMochiProviderError(error, true, config.provider) +
+              " Mientras tanto te hablo yo, sin inventar un botón de conexión.",
+          );
+          setMood("idle");
+        }
+        return;
+      }
+
+      if (intent.type !== "chat") {
+        pushMochi(localMochiReply({ intent, userText: message, seat, todos }));
+        setMood(intent.type === "pomodoro" ? "listening" : "happy");
+        return;
+      }
+
+      if (canUseCurrentProvider || config.provider === "ollama" || config.provider === "bitte") {
+        setMood("thinking");
+        try {
+          const reply = await askSiteAgent(message, nextHistory);
+          pushMochi(reply || localMochiReply({ intent, userText: message, seat, todos }));
+          setMood("happy");
+          return;
+        } catch {
+          // fall through to local voice
+        }
+      }
+
+      pushMochi(localMochiReply({ intent, userText: message, seat, todos }));
+      setMood("idle");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function onComposer(event: FormEvent) {
+    event.preventDefault();
+    void handleTalk(composer);
+  }
+
+  function addTodo() {
+    const text = todoDraft.trim();
+    if (!text) return;
+    setTodos((prev) => [...prev, { id: uid("todo"), text, done: false, createdAt: nowIso() }]);
+    setTodoDraft("");
+  }
+
+  function sendPrivate() {
+    const text = privateDraft.trim();
+    if (!text || !seat) return;
+    setPrivateChat((prev) => [
+      ...prev,
+      { id: uid("priv"), from: seat, content: text, createdAt: nowIso() },
+    ]);
+    setPrivateDraft("");
+  }
+
+  const lastMochi = useMemo(
+    () => [...petChat].reverse().find((row) => row.role === "mochi")?.content,
+    [petChat],
+  );
+
+  const pomoPanel = (
+    <section className="companion-card">
+      <h2>Pomodoro</h2>
+      <div className="pomo-ring-wrap">
+        <div className="pomo-label">{pomoMode === "foco" ? "Foco" : "Descanso"}</div>
+        <div className="pomo-time">{formatClock(pomoSeconds)}</div>
+        <div className="pomo-actions">
+          <button type="button" onClick={() => setPomoRunning((v) => !v)}>
+            {pomoRunning ? "Pausar" : "Arrancar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPomoRunning(false);
+              setPomoMode("foco");
+              setPomoSeconds(25 * 60);
+            }}
+          >
+            Reiniciar
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+
+  const todosPanel = (
+    <section className="companion-card companion-grow">
+      <h2>Notas</h2>
+      <div className="todo-row">
+        <input
+          value={todoDraft}
+          onChange={(event) => setTodoDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") addTodo();
+          }}
+          placeholder="Anotá algo…"
+        />
+        <button type="button" className="ghost-btn" onClick={addTodo}>
+          Sumar
+        </button>
+      </div>
+      {todos.length === 0 ? (
+        <p className="empty-note">Nada pendiente. Decime “anotá que…” y lo escribo yo.</p>
+      ) : (
+        <ul className="todo-list">
+          {todos.map((item) => (
+            <li key={item.id} className={`todo-item${item.done ? " is-done" : ""}`}>
+              <input
+                type="checkbox"
+                checked={item.done}
+                onChange={() =>
+                  setTodos((prev) =>
+                    prev.map((row) => (row.id === item.id ? { ...row, done: !row.done } : row)),
+                  )
+                }
+              />
+              <span>{item.text}</span>
+              <button
+                type="button"
+                onClick={() => setTodos((prev) => prev.filter((row) => row.id !== item.id))}
+              >
+                sacar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  const videoPanel = (
+    <section className="companion-card">
+      <h2>Video</h2>
+      <VideoFrame url={videoUrl} />
+      <div className="video-row">
+        <input
+          value={videoDraft}
+          onChange={(event) => setVideoDraft(event.target.value)}
+          placeholder="YouTube o URL"
+        />
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={() => {
+            setVideoUrl(videoDraft.trim());
+          }}
+        >
+          Poner
+        </button>
+      </div>
+    </section>
+  );
+
+  const privatePanel = (
+    <section className="companion-card companion-grow">
+      <h2>Nosotras dos</h2>
+      <div className="seat-row">
+        {(["katho", "lulox"] as PersonId[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            className={`seat-btn${seat === id ? " is-on" : ""}`}
+            onClick={() => setSeat(id)}
+          >
+            Soy {PEOPLE[id].name}
+          </button>
+        ))}
+      </div>
+      {privateChat.length === 0 ? (
+        <p className="empty-note">
+          Un solo chat, entre Katho y Lulox. Vive en este navegador: no hay servidor ni GitHub
+          OAuth todavía, para no pedirte infra nueva. Si están en la misma compu se ven. Si no,
+          pedime a mí: “decile a {seat ? PEOPLE[otherPerson(seat)].name : "Katho"} que…”.
+        </p>
+      ) : (
+        <div className="private-log">
+          {privateChat.map((row) => (
+            <div key={row.id} className={`private-msg from-${row.from}`}>
+              <span className="who">{row.from === "mochi" ? "Mochi" : PEOPLE[row.from].name}</span>
+              {row.content}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="private-composer">
+        <input
+          value={privateDraft}
+          onChange={(event) => setPrivateDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") sendPrivate();
+          }}
+          placeholder={seat ? `Escribir como ${PEOPLE[seat].name}` : "Elegí quién sos"}
+          disabled={!seat}
+        />
+        <button type="button" className="ghost-btn" onClick={sendPrivate} disabled={!seat}>
+          Enviar
+        </button>
+      </div>
+    </section>
+  );
+
+  const composerForm = (
+    <form className="companion-composer" onSubmit={onComposer}>
+      <textarea
+        value={composer}
+        onChange={(event) => setComposer(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            void handleTalk(composer);
+          }
+        }}
+        placeholder="Hablale a ella…"
+        rows={2}
+      />
+      <button type="submit" disabled={sending || !composer.trim()}>
+        {sending ? "…" : "Decile"}
+      </button>
+    </form>
+  );
+
+  const speech = (
+    <div className="speech-stack" ref={logRef}>
+      {petChat.length === 0 ? (
+        <div className="speech-bubble mochi">
+          Hola. Soy Mochi. Hablame, che. Si querés que le deje un recado a Katho o a Lulox, lo
+          llevo yo. El agente del sitio lo uso si me lo pedís — no hay botón falso de conexión.
+        </div>
+      ) : (
+        petChat.slice(-12).map((row) => (
+          <div key={row.id} className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}>
+            {row.content}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  if (isMobile === null) {
+    return <div className="companion-root" data-companion-surface />;
+  }
+
+  return (
+    <div className="companion-root" data-companion-surface>
+      <Link href="/" className="companion-back">
+        ← al sitio
+      </Link>
+
+      {isMobile ? null : (
+        <div className="companion-desktop">
+          <div className="companion-col">
+            {pomoPanel}
+            {todosPanel}
+          </div>
+          <div className="companion-stage">
+            <CompanionPet mood={mood} size="desktop" />
+            {speech}
+            {composerForm}
+            <p className="companion-hint">
+              Ella es el centro. Pedile un pomodoro, un video, una nota, un recado, o que le
+              pregunte al agente del sitio.
+            </p>
+          </div>
+          <div className="companion-col">
+            {privatePanel}
+            {videoPanel}
+          </div>
+        </div>
+      )}
+
+      {isMobile ? (
+        <div className="companion-mobile">
+          {mobileTab === "mochi" ? (
+            <div className="mobile-mochi">
+              <CompanionPet mood={mood} size="mobile" />
+              {lastMochi ? (
+                <div className="speech-bubble mochi" style={{ margin: "8px auto", width: "100%" }}>
+                  {lastMochi}
+                </div>
+              ) : (
+                <div className="speech-bubble mochi" style={{ margin: "8px auto", width: "100%" }}>
+                  Acá abajo me hablás. El resto de las cosas vive en las pestañas, no en un escritorio
+                  achicado.
+                </div>
+              )}
+              <div className="mobile-log">
+                {petChat.slice(-20).map((row) => (
+                  <div
+                    key={row.id}
+                    className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}
+                  >
+                    {row.content}
+                  </div>
+                ))}
+              </div>
+              {composerForm}
+            </div>
+          ) : (
+            <div className="mobile-sheet">
+              {mobileTab === "pomo" ? pomoPanel : null}
+              {mobileTab === "notas" ? todosPanel : null}
+              {mobileTab === "video" ? videoPanel : null}
+              {mobileTab === "nosotras" ? privatePanel : null}
+            </div>
+          )}
+          <nav className="mobile-dock" aria-label="Pieza móvil">
+            {(
+              [
+                ["mochi", "Mochi"],
+                ["pomo", "Pomo"],
+                ["notas", "Notas"],
+                ["video", "Video"],
+                ["nosotras", "Nosotras"],
+              ] as Array<[MobileTab, string]>
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={mobileTab === id ? "is-on" : ""}
+                onClick={() => setMobileTab(id)}
+              >
+                <span className="dock-label">{label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      ) : null}
+    </div>
+  );
+}
