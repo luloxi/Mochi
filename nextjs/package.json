@@ -6,6 +6,7 @@
     "build": "node scripts/vendor-runtime-core.js && prisma generate && next build --webpack",
     "dev": "next dev",
     "lint": "eslint .",
+    "test:companion": "npx --yes tsx --test lib/companion/*.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:migrate:dev": "prisma migrate dev",

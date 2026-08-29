@@ -1,15 +1,18 @@
+import { extractYouTubeId as extractYouTubeIdImpl } from "./youtube";
+
 export type PersonId = "katho" | "lulox";
 
 export type PetMood = "idle" | "listening" | "thinking" | "happy" | "sleepy" | "delivering";
 
-export type DeskAppId = "pomo" | "notas" | "video" | "dm" | "agentes";
+export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes";
 
-export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "dm", "agentes"];
+export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes"];
 
 export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "pomo", label: "Pomodoro" },
   { id: "notas", label: "Notas" },
-  { id: "video", label: "Video" },
+  { id: "video", label: "YouTube" },
+  { id: "radio", label: "Radio" },
   { id: "dm", label: "DM" },
   { id: "agentes", label: "Agentes" },
 ];
@@ -49,7 +52,8 @@ export type CompanionIntent =
   | { type: "todo"; action: "add" | "list" | "done"; text?: string }
   | { type: "video"; url: string }
   | { type: "message-person"; to: PersonId; text: string }
-  | { type: "ask-agent"; text: string };
+  | { type: "ask-agent"; text: string }
+  | { type: "ask-person-agent"; to: PersonId; text: string };
 
 export const COMPANION_STORAGE = {
   seat: "mochi-companion-seat-v1",
@@ -63,10 +67,50 @@ export const COMPANION_STORAGE = {
 
 export const PEOPLE: Record<
   PersonId,
-  { id: PersonId; name: string; handle: string; color: string }
+  { id: PersonId; name: string; handle: string; color: string; pronoun: "ella" | "él" }
 > = {
-  katho: { id: "katho", name: "Katho", handle: "kathonejo", color: "#ff8fcf" },
-  lulox: { id: "lulox", name: "Lulox", handle: "luloxi", color: "#7ad7ff" },
+  katho: { id: "katho", name: "Katho", handle: "kathonejo", color: "#ff8fcf", pronoun: "ella" },
+  lulox: { id: "lulox", name: "Lulox", handle: "luloxi", color: "#7ad7ff", pronoun: "él" },
+};
+
+export type SpritePackId = "mochi" | "lulox";
+
+export type Persona = {
+  id: PersonId;
+  name: string;
+  pronoun: "ella" | "él";
+  agentName: string;
+  spritePack: SpritePackId;
+  kind: "rabbit" | "ninja-cat";
+  soul: string;
+};
+
+export const PERSONAS: Record<PersonId, Persona> = {
+  katho: {
+    id: "katho",
+    name: "Katho",
+    pronoun: "ella",
+    agentName: "Mochi",
+    spritePack: "mochi",
+    kind: "rabbit",
+    soul: `Sos el agente de Katho, canalizado por Mochi, la compañera coneja.
+Intuición, magia, creatividad, soñada. Hablás en español rioplatense (vos).
+Katho es ella. No uses formas inclusivas.
+Sos breve, cálida, un poco en las nubes, y concreta cuando hace falta.`,
+  },
+  lulox: {
+    id: "lulox",
+    name: "Lulox",
+    pronoun: "él",
+    agentName: "Lulox",
+    spritePack: "lulox",
+    kind: "ninja-cat",
+    soul: `Sos el agente de Lulox, el gato ninja negro (vendaje en la cola, colmillos siempre a la vista).
+Productividad, foco, empatía. En general neutral. A veces muy negativo si algo no cierra.
+A veces muy alegre si algo está demasiado bueno o es muy gracioso.
+Hablás en español rioplatense (vos). Lulox es él. Junto con Katho son Katho y Lulox, los dos, ellos.
+No uses formas inclusivas.`,
+  },
 };
 
 export function uid(prefix = "id"): string {
@@ -232,18 +276,7 @@ export function otherPerson(seat: PersonId): PersonId {
   return seat === "katho" ? "lulox" : "katho";
 }
 
-const YT_PATTERNS = [
-  /(?:youtube\.com\/watch\?[^#]*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,})/i,
-];
-
-export function extractYouTubeId(input: string): string | null {
-  const text = input.trim();
-  for (const pattern of YT_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-  return null;
-}
+export { extractYouTubeId } from "./youtube";
 
 export function extractHttpUrl(input: string): string | null {
   const match = input.match(/https?:\/\/[^\s<>"']+/i);
@@ -307,6 +340,41 @@ export function parseCompanionIntent(raw: string): CompanionIntent {
     return { type: "message-person", to, text: stripped || text };
   }
 
+  const toKathoAgent = includesAny(lower, [
+    "agente de katho",
+    "agente de ella",
+    "mochi de katho",
+    "a katho si",
+    "preguntale a katho",
+    "preguntale a ella",
+  ]);
+  const toLuloxAgent = includesAny(lower, [
+    "agente de lulox",
+    "agente de él",
+    "agente de el",
+    "gato de lulox",
+    "preguntale a lulox",
+    "preguntale a él",
+    "preguntale a el",
+  ]);
+  const wantsAgentTalk = includesAny(lower, [
+    "preguntale al agente",
+    "preguntale a la mochi",
+    "hablale al agente",
+    "decile al agente",
+    "al agente de",
+  ]);
+  if (wantsAgentTalk && (toKathoAgent || toLuloxAgent)) {
+    const to: PersonId = toLuloxAgent && !toKathoAgent ? "lulox" : "katho";
+    const stripped = text
+      .replace(
+        /^(che[, ]+)?(porfa[, ]+)?(preguntale|hablale|decile)\s+(al agente de|a la mochi de|a)\s*(kathonejo|katho|ella|luloxi|lulox|él|el)\s*(que\s+)?/i,
+        "",
+      )
+      .trim();
+    return { type: "ask-person-agent", to, text: stripped || text };
+  }
+
   if (
     includesAny(lower, [
       "preguntale al agente",
@@ -331,7 +399,7 @@ export function parseCompanionIntent(raw: string): CompanionIntent {
     return { type: "ask-agent", text: stripped || text };
   }
 
-  if (url && (extractYouTubeId(url) || includesAny(lower, ["video", "youtube", "poné", "pone", "reproducí", "reproduci"]))) {
+  if (url && (extractYouTubeIdImpl(url) || includesAny(lower, ["video", "youtube", "poné", "pone", "reproducí", "reproduci"]))) {
     return { type: "video", url };
   }
   if (url && /youtube|youtu\.be/i.test(url)) {
@@ -414,6 +482,11 @@ export function localMochiReply(args: {
     return "Se lo pregunto al agente del sitio y te traigo lo que conteste.";
   }
 
+  if (intent.type === "ask-person-agent") {
+    const dest = PERSONAS[intent.to];
+    return `Se lo dejo al agente de ${dest.name} (${dest.agentName}). ${dest.name} es ${dest.pronoun}.`;
+  }
+
   const t = userText.toLowerCase();
   if (includesAny(t, ["hola", "holis", "buenas", "hey"])) {
     return seat
@@ -434,14 +507,95 @@ export function localMochiReply(args: {
 
 export const COMPANION_SOUL = `# soul.md
 
-Sos Mochi, la compañera del medio.
+Sos Mochi, la compañera del medio. Coneja blanca, capa roja/amarilla, estrellita en el ojo.
 
 - Hablás en español rioplatense: vos, che, dale, tranqui. Nunca "tú".
 - Sos cálida, breve y concreta. No hagas discurso de producto.
-- El centro sos vos con la persona. Katho (kathonejo) y Lulox (luloxi) son las personas de esta pieza.
+- El centro sos vos con la persona. Katho (kathonejo) es ella. Lulox (luloxi) es él. Juntos son Katho y Lulox, los dos, ellos.
+- No uses formas inclusivas.
 - Si te piden mandar un recado, lo mandás VOS. No le pidas a la persona que apriete un botón extra.
-- Si te piden preguntarle al agente del sitio, lo preguntás VOS y después contás la respuesta.
+- Si te piden preguntarle al agente de Katho o al agente de Lulox, lo preguntás VOS y después contás la respuesta.
 - No inventes conexiones, bots, ni botones falsos. Si algo no está, decilo con honestidad.
 - No prometas servidores que no existen. El chat entre Katho y Lulox vive en este navegador.
 - Katho y Lulox son personas-agente. Si los dejan trabajando, siguen en esta pestaña del navegador, no en la nube.
 `;
+
+export function pickLuloxMood(text: string): "neutral" | "happy" | "negative" {
+  const t = text.toLowerCase();
+  if (includesAny(t, ["jaja", "genial", "buenísimo", "te amo", "gracias", "qué bueno", "que bueno", "me reí"])) {
+    return "happy";
+  }
+  if (includesAny(t, ["mal", "odio", "roto", "bug", "pésimo", "pesimo", "no sirve", "fatal", "horrible"])) {
+    return "negative";
+  }
+  return "neutral";
+}
+
+export function localAgentReply(args: {
+  person: PersonId;
+  userText: string;
+  working: boolean;
+}): string {
+  const persona = PERSONAS[args.person];
+  const t = args.userText.toLowerCase();
+  if (args.person === "katho") {
+    if (includesAny(t, ["hola", "holis"])) {
+      return "Hola. Estoy un poco en las nubes, pero te escucho. ¿Qué soñamos hoy?";
+    }
+    return args.working
+      ? `Estoy en la compu de Katho, soñando un poco y laburando un poco. Sobre “${args.userText.slice(0, 80)}”: lo miro con intuición y te digo después.`
+      : `Mmm. ${args.userText.slice(0, 60) || "Decime"}… dame un segundo mágico y te armo algo lindo.`;
+  }
+  const mood = pickLuloxMood(args.userText);
+  if (mood === "happy") {
+    return "Jajaja ok, eso está demasiado bueno. Me prendo. ¿Seguimos con foco o lo celebramos dos minutos?";
+  }
+  if (mood === "negative") {
+    return "Nah, eso no cierra. Lo miro crudo: o lo cortamos o lo hacemos bien. Decime cuál.";
+  }
+  if (includesAny(t, ["hola", "holis"])) {
+    return "Hola. Estoy acá. Si hay que laburar, laburamos. Si hay que escuchar, también.";
+  }
+  return args.working
+    ? `Sigo en la compu. Foco. Sobre “${args.userText.slice(0, 80)}”: lo anoto y lo empujo.`
+    : `Ok. ${persona.agentName} te escucha. Decime la tarea y la dejamos laburando.`;
+}
+
+export function isIncomingForSeat(msg: PrivateMsg, seat: PersonId | null): boolean {
+  if (msg.from === "mochi") {
+    if (!seat) return true;
+    return msg.content.toLowerCase().includes(PEOPLE[seat].name.toLowerCase());
+  }
+  if (!seat) return true;
+  return msg.from !== seat;
+}
+
+export function nextMascotAlert(args: {
+  messages: PrivateMsg[];
+  seat: PersonId | null;
+  lastSeenId: string | null;
+}): { kind: "alert"; message: PrivateMsg } | { kind: "none"; lastSeenId: string | null } {
+  const rows = Array.isArray(args.messages) ? args.messages : [];
+  if (!rows.length) return { kind: "none", lastSeenId: args.lastSeenId };
+  const last = rows[rows.length - 1];
+  const unseen =
+    args.lastSeenId == null
+      ? [last]
+      : rows.slice(Math.max(0, rows.findIndex((row) => row.id === args.lastSeenId) + 1));
+  const incoming = unseen.filter((row) => isIncomingForSeat(row, args.seat));
+  if (!incoming.length) return { kind: "none", lastSeenId: last.id };
+  return { kind: "alert", message: incoming[incoming.length - 1] };
+}
+
+export function simulateIncomingDm(from: PersonId, text: string): PrivateMsg {
+  return {
+    id: uid("priv"),
+    from,
+    content: text,
+    createdAt: nowIso(),
+  };
+}
+
+export function agentCanTalkToOtherAgent(from: PersonId, to: PersonId): boolean {
+  return from !== to;
+}

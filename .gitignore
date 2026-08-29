@@ -16,3 +16,4 @@ legacy/
 foundry/.env
 foundry/cache/
 foundry/out/
+.ref/

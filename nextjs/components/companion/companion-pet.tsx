@@ -17,8 +17,13 @@ import {
   type Bounds,
   type Perch,
   type ShimejiMascot,
+  type SpritePackId,
 } from "@/lib/companion/shimeji-engine";
-import { drawFacingSprite, prefetchFacingSprites } from "@/lib/companion/star-eye";
+import {
+  drawFacingSprite,
+  mascotDrawTransform,
+  prefetchFacingSprites,
+} from "@/lib/companion/star-eye";
 
 type CompanionPetProps = {
   working: boolean;
@@ -26,6 +31,8 @@ type CompanionPetProps = {
   scale?: number;
   label?: string;
   onClick?: () => void;
+  pack?: SpritePackId;
+  alertText?: string | null;
 };
 
 function useBounds(node: HTMLElement | null): Bounds {
@@ -52,20 +59,30 @@ function useBounds(node: HTMLElement | null): Bounds {
 function MochiCanvas({
   spriteKey,
   facingRight,
+  pack = "mochi",
 }: {
   spriteKey: string;
   facingRight: boolean;
+  pack?: SpritePackId;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    void drawFacingSprite(canvas, spriteUrl(spriteKey), facingRight);
-  }, [spriteKey, facingRight]);
+    void drawFacingSprite(canvas, spriteUrl(spriteKey, pack), facingRight, pack === "mochi");
+  }, [spriteKey, facingRight, pack]);
   return <canvas ref={canvasRef} aria-hidden />;
 }
 
-export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: CompanionPetProps) {
+export function CompanionWanderer({
+  working,
+  perch,
+  scale = 0.72,
+  onClick,
+  pack = "mochi",
+  alertText = null,
+  label,
+}: CompanionPetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mascotRef = useRef<ShimejiMascot | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
@@ -73,8 +90,8 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
   const bounds = useBounds(host);
 
   useEffect(() => {
-    prefetchFacingSprites(PREFETCH_SPRITE_KEYS.map((key) => spriteUrl(key)));
-  }, []);
+    prefetchFacingSprites(PREFETCH_SPRITE_KEYS.map((key) => spriteUrl(key, pack)));
+  }, [pack]);
 
   useEffect(() => {
     setHost(hostRef.current);
@@ -140,14 +157,23 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
             width: box.size,
             height: box.size,
             cursor: m.isDragging ? "grabbing" : "grab",
+            transform: mascotDrawTransform(),
           }}
-          aria-label="Mochi, arrastrala o mirala caminar"
+          data-facing={m.facingRight ? "right" : "left"}
+          data-pack={pack}
+          data-no-flip="true"
+          aria-label={label || (pack === "lulox" ? "Lulox, el gato ninja" : "Mochi, arrastrala o mirala caminar")}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
           onPointerCancel={pointerUp}
         >
-          <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} />
+          <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
+          {alertText ? (
+            <span className="mascot-alert" role="status">
+              {alertText}
+            </span>
+          ) : null}
         </button>
       ) : null}
     </div>
@@ -157,9 +183,13 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
 export function CompanionWorkingSprite({
   scale = 0.62,
   facingRight = false,
+  pack = "mochi",
+  emotion,
 }: {
   scale?: number;
   facingRight?: boolean;
+  pack?: SpritePackId;
+  emotion?: "happy" | "negative" | "neutral";
 }) {
   const mascotRef = useRef<ShimejiMascot | null>(null);
   const [, setTick] = useState(0);
@@ -182,11 +212,23 @@ export function CompanionWorkingSprite({
   return (
     <div
       className="companion-working-sprite"
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, transform: mascotDrawTransform() }}
       role="img"
-      aria-label="Mochi trabajando en la compu"
+      aria-label={pack === "lulox" ? "Lulox trabajando en la compu" : "Mochi trabajando en la compu"}
+      data-pack={pack}
+      data-no-flip="true"
     >
-      <MochiCanvas spriteKey={m.spriteKey} facingRight={facingRight} />
+      <MochiCanvas
+        spriteKey={
+          pack === "lulox" && emotion === "happy"
+            ? "emotion-happy"
+            : pack === "lulox" && emotion === "negative"
+              ? "emotion-negative"
+              : m.spriteKey
+        }
+        facingRight={facingRight}
+        pack={pack}
+      />
     </div>
   );
 }

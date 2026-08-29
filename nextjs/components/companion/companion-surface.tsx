@@ -10,19 +10,12 @@ import {
 } from "react";
 import Link from "next/link";
 import { CompanionWanderer, CompanionWorkingSprite } from "@/components/companion/companion-pet";
-import { useSiteMochi } from "@/components/site-mochi-provider";
-import { buildSiteMochiChatMessages } from "@/lib/site-mochi-chat";
-import {
-  formatSiteMochiProviderError,
-  sendBitteBrowserChat,
-  sendOllamaBrowserChat,
-  sendOpenClawBrowserChat,
-} from "@/lib/site-mochi-browser-providers";
 import {
   COMPANION_SOUL,
   COMPANION_STORAGE,
   DESK_APPS,
   PEOPLE,
+  PERSONAS,
   type AgentJob,
   type CompanionIntent,
   type CompanionMsg,
@@ -31,7 +24,6 @@ import {
   type PetMood,
   type PrivateMsg,
   type TodoItem,
-  extractYouTubeId,
   formatWorkClock,
   loadAgents,
   loadOpenApps,
@@ -40,9 +32,12 @@ import {
   loadSeat,
   loadTodos,
   loadVideoUrl,
+  localAgentReply,
   localMochiReply,
+  nextMascotAlert,
   otherPerson,
   parseCompanionIntent,
+  pickLuloxMood,
   saveAgents,
   saveOpenApps,
   savePetChat,
@@ -50,11 +45,37 @@ import {
   saveSeat,
   saveTodos,
   saveVideoUrl,
+  simulateIncomingDm,
   startCompanionRuntime,
   toggleAgentWorking,
   uid,
   nowIso,
 } from "@/lib/companion/companion-core";
+import {
+  GROK_CONSOLE_KEYS,
+  buildGrokChatRequest,
+  buildGrokConnectUrl,
+  connectGrokWithKey,
+  disconnectGrok,
+  emptyGrokSession,
+  grokReplyFromPayload,
+  isGrokConnected,
+  loadGrokSession,
+  saveGrokSession,
+  type GrokSession,
+} from "@/lib/companion/grok-connect";
+import { RADIO_STATIONS, radioStationById, type RadioStationId } from "@/lib/companion/radio";
+import {
+  YT_STARTERS,
+  clipFromId,
+  enqueueClip,
+  extractYouTubeId,
+  pushUniqueClip,
+  takeNextClip,
+  youtubeEmbedUrl,
+  youtubeOembedUrl,
+  type YtClip,
+} from "@/lib/companion/youtube";
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
@@ -102,87 +123,44 @@ function DeskWindow({
   );
 }
 
-function parseSseBlock(block: string) {
-  const lines = block.split(/\r?\n/);
-  let event = "message";
-  const dataParts: string[] = [];
-  for (const line of lines) {
-    if (!line || line.startsWith(":")) continue;
-    if (line.startsWith("event:")) event = line.slice(6).trim() || "message";
-    else if (line.startsWith("data:")) dataParts.push(line.slice(5).replace(/^\s/, ""));
-  }
-  return { event, data: dataParts.join("\n").trim() };
-}
-
-async function streamSiteReply(body: Record<string, unknown>): Promise<string> {
-  const response = await fetch("/api/mochi-chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+async function askGrok(args: {
+  apiKey: string;
+  soul: string;
+  message: string;
+  history: CompanionMsg[];
+  characterLabel: string;
+}): Promise<string> {
+  const chatHistory = args.history
+    .filter((row) => !row.content.startsWith("…"))
+    .slice(-10)
+    .map((row) => ({
+      role: (row.role === "user" ? "user" : "assistant") as "user" | "assistant",
+      content: row.content,
+    }));
+  const built = buildGrokChatRequest({
+    apiKey: args.apiKey,
+    messages: [
+      {
+        role: "system",
+        content: `${args.soul}\n\nCharacter: ${args.characterLabel}. Español rioplatense. Respuestas cortas.`,
+      },
+      ...chatHistory,
+      { role: "user", content: args.message },
+    ],
   });
-  const contentType = response.headers.get("content-type") || "";
-  if (!response.ok || !contentType.includes("text/event-stream")) {
-    const json = await response.json().catch(() => null);
-    const reply = typeof json?.reply === "string" ? json.reply.trim() : "";
-    if (reply) return reply;
-    const errorCode = typeof json?.error === "string" ? json.error : "bad-response";
-    throw new Error(errorCode);
+  const response = await fetch("/api/companion/grok", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+    },
+    body: JSON.stringify({ messages: built.body.messages }),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(typeof json?.error === "string" ? json.error : "GROK_FAILED");
   }
-  if (!response.body) throw new Error("STREAM_UNAVAILABLE");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let reply = "";
-
-  const process = (block: string) => {
-    const { event, data } = parseSseBlock(block);
-    if (!data) return false;
-    if (event === "token") {
-      try {
-        const payload = JSON.parse(data);
-        if (typeof payload?.text === "string") reply += payload.text;
-      } catch {
-        return false;
-      }
-      return false;
-    }
-    if (event === "done") {
-      try {
-        const payload = JSON.parse(data);
-        if (typeof payload?.reply === "string" && payload.reply.trim()) {
-          reply = payload.reply.trim();
-        }
-      } catch {
-        // keep accumulated
-      }
-      return true;
-    }
-    if (event === "error") {
-      let payload: { error?: string } = {};
-      try {
-        payload = JSON.parse(data);
-      } catch {
-        throw new Error("STREAM_ERROR");
-      }
-      throw new Error(typeof payload.error === "string" ? payload.error : "STREAM_ERROR");
-    }
-    return false;
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary !== -1) {
-      const block = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      if (process(block)) return reply.trim();
-      boundary = buffer.indexOf("\n\n");
-    }
-  }
-  if (buffer.trim()) process(buffer);
-  return reply.trim();
+  return grokReplyFromPayload(json) || (typeof json?.reply === "string" ? json.reply : "");
 }
 
 function formatClock(totalSeconds: number) {
@@ -224,37 +202,85 @@ function PomoRing({
   );
 }
 
-function VideoFrame({ url }: { url: string }) {
-  const yt = extractYouTubeId(url);
-  if (yt) {
+function RadioPlayer({ stationId }: { stationId: RadioStationId }) {
+  const station = radioStationById(stationId);
+  useEffect(() => {
+    if (station.kind === "off") return;
+    let ctx: AudioContext;
+    try {
+      ctx = new AudioContext();
+    } catch {
+      return;
+    }
+    const master = ctx.createGain();
+    master.gain.value = 0.22;
+    master.connect(ctx.destination);
+    let stop: (() => void) | null = null;
+    if (station.kind === "brown") {
+      const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < data.length; i++) {
+        const white = Math.random() * 2 - 1;
+        last = (last + 0.02 * white) / 1.02;
+        data[i] = last * 3.5;
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.connect(master);
+      src.start();
+      stop = () => src.stop();
+    } else {
+      const burst = () => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = station.kind === "rain" ? "sawtooth" : "sine";
+        osc.frequency.value = station.kind === "rain" ? 180 + Math.random() * 900 : 90 + Math.random() * 40;
+        g.gain.value = station.kind === "rain" ? 0.04 : 0.08;
+        osc.connect(g);
+        g.connect(master);
+        osc.start();
+        osc.stop(ctx.currentTime + (station.kind === "rain" ? 0.08 : 1.6));
+      };
+      burst();
+      const id = window.setInterval(burst, station.kind === "rain" ? 70 : 1600);
+      stop = () => window.clearInterval(id);
+    }
+    return () => {
+      stop?.();
+      void ctx.close();
+    };
+  }, [station.kind]);
+  return (
+    <p className="empty-note">
+      {station.kind === "off" ? "Silencio." : `Sonando: ${station.label}.`}
+    </p>
+  );
+}
+
+function VideoFrame({ clip }: { clip: YtClip | null }) {
+  if (clip) {
     return (
       <div className="video-stage">
         <iframe
-          title="Video"
-          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt)}`}
+          title={clip.title || "YouTube"}
+          src={youtubeEmbedUrl(clip.id)}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
       </div>
     );
   }
-  if (url) {
-    return (
-      <div className="video-stage">
-        <iframe title="URL" src={url} sandbox="allow-scripts allow-same-origin allow-presentation" />
-      </div>
-    );
-  }
   return (
     <p className="empty-note">
-      Pegá un YouTube o una URL. Hasta que no haya nada, este rincón queda en silencio. No hay
-      playlist inventada.
+      Explorá YouTube: pegá un link, un ID, o buscá. Hay recents, cola y unas radios lofi para
+      arrancar. No invento una playlist tuya.
     </p>
   );
 }
 
 export function CompanionSurface() {
-  const { config, canUseCurrentProvider, incrementFreeSiteMessagesUsed } = useSiteMochi();
   const isMobile = useIsMobile();
   const [seat, setSeat] = useState<PersonId | null>(null);
   const [petChat, setPetChat] = useState<CompanionMsg[]>([]);
@@ -262,6 +288,11 @@ export function CompanionSurface() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [videoUrl, setVideoUrl] = useState("");
   const [videoDraft, setVideoDraft] = useState("");
+  const [ytNow, setYtNow] = useState<YtClip | null>(null);
+  const [ytRecents, setYtRecents] = useState<YtClip[]>([]);
+  const [ytQueue, setYtQueue] = useState<YtClip[]>([]);
+  const [ytHits, setYtHits] = useState<YtClip[]>([]);
+  const [ytSearching, setYtSearching] = useState(false);
   const [todoDraft, setTodoDraft] = useState("");
   const [privateDraft, setPrivateDraft] = useState("");
   const [composer, setComposer] = useState("");
@@ -273,8 +304,10 @@ export function CompanionSurface() {
   ]);
   const [perch, setPerch] = useState<{ x: number; y: number } | null>(null);
   const [agentLabelDraft, setAgentLabelDraft] = useState("");
+  const [agentAskDraft, setAgentAskDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<MobileTab>("mochi");
   const [talkOpen, setTalkOpen] = useState(false);
+  const [talkWith, setTalkWith] = useState<"mochi" | "lulox">("mochi");
   const [openApps, setOpenApps] = useState<DeskAppId[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [focusApp, setFocusApp] = useState<DeskAppId | "talk" | null>(null);
@@ -282,21 +315,36 @@ export function CompanionSurface() {
   const [pomoTotal, setPomoTotal] = useState(25 * 60);
   const [pomoRunning, setPomoRunning] = useState(false);
   const [pomoMode, setPomoMode] = useState<"foco" | "descanso">("foco");
+  const [grok, setGrok] = useState<GrokSession>(emptyGrokSession());
+  const [grokKeyDraft, setGrokKeyDraft] = useState("");
+  const [radioId, setRadioId] = useState<RadioStationId>("silencio");
+  const [mascotAlert, setMascotAlert] = useState<string | null>(null);
+  const [luloxMood, setLuloxMood] = useState<"neutral" | "happy" | "negative">("neutral");
   const hydrated = useRef(false);
+  const seenDmRef = useRef<string | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const mobileLogRef = useRef<HTMLDivElement | null>(null);
+  const grokOn = isGrokConnected(grok);
   const mochiWorking = sending || mood === "thinking";
+  const kathoWorking = agents.some((row) => row.id === "katho" && row.working);
+  const luloxWorking = agents.some((row) => row.id === "lulox" && row.working);
 
   useEffect(() => {
     setSeat(loadSeat());
     setPetChat(loadPetChat());
-    setPrivateChat(loadPrivateChat());
+    const priv = loadPrivateChat();
+    setPrivateChat(priv);
+    seenDmRef.current = priv.length ? priv[priv.length - 1].id : null;
     setTodos(loadTodos());
     setAgents(loadAgents());
     setOpenApps(loadOpenApps());
     const storedVideo = loadVideoUrl();
     setVideoUrl(storedVideo);
     setVideoDraft(storedVideo);
+    const ytId = extractYouTubeId(storedVideo);
+    if (ytId) setYtNow(clipFromId(ytId));
+    const session = loadGrokSession();
+    setGrok(session);
     startCompanionRuntime();
     hydrated.current = true;
   }, []);
@@ -345,7 +393,32 @@ export function CompanionSurface() {
   useEffect(() => {
     if (!hydrated.current) return;
     saveVideoUrl(videoUrl);
+    const id = extractYouTubeId(videoUrl);
+    if (id) setYtNow((cur) => (cur?.id === id ? cur : clipFromId(id, cur?.title || "")));
   }, [videoUrl]);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    saveGrokSession(grok);
+  }, [grok]);
+
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const result = nextMascotAlert({
+      messages: privateChat,
+      seat,
+      lastSeenId: seenDmRef.current,
+    });
+    if (result.kind === "alert") {
+      const who = result.message.from === "mochi" ? "Mochi" : PEOPLE[result.message.from].name;
+      setMascotAlert(`${who} te escribió`);
+      setMood("delivering");
+      window.setTimeout(() => setMascotAlert(null), 5000);
+    }
+    if (privateChat.length) {
+      seenDmRef.current = privateChat[privateChat.length - 1].id;
+    }
+  }, [privateChat, seat]);
   useEffect(() => {
     if (!hydrated.current) return;
     saveAgents(agents);
@@ -468,71 +541,46 @@ export function CompanionSurface() {
     [pomoMode, seat],
   );
 
-  const askSiteAgent = useCallback(
-    async (message: string, history: CompanionMsg[]) => {
-      const chatHistory = history
-        .filter((row) => !row.content.startsWith("…"))
-        .slice(-10)
-        .map((row) => ({
-          role: row.role === "user" ? ("user" as const) : ("assistant" as const),
-          content: row.content,
-        }));
-      const payloadMessages = buildSiteMochiChatMessages({
-        message,
-        history: chatHistory,
-        language: "es",
-        characterLabel: "Mochi",
-        soulMd: COMPANION_SOUL,
-      });
+  async function playClip(clip: YtClip) {
+    setYtNow(clip);
+    setVideoUrl(`https://www.youtube.com/watch?v=${clip.id}`);
+    setVideoDraft(`https://www.youtube.com/watch?v=${clip.id}`);
+    setYtRecents((prev) => pushUniqueClip(prev, clip));
+    if (!clip.title || clip.title === clip.id) {
+      try {
+        const res = await fetch(youtubeOembedUrl(clip.id));
+        const json = await res.json();
+        if (typeof json?.title === "string") {
+          const titled = { ...clip, title: json.title };
+          setYtNow(titled);
+          setYtRecents((prev) => pushUniqueClip(prev, titled));
+        }
+      } catch {
+        // oembed is optional
+      }
+    }
+  }
 
-      if (config.provider === "ollama") {
-        return sendOllamaBrowserChat({
-          messages: payloadMessages,
-          ollamaUrl: config.ollamaUrl,
-          ollamaModel: config.ollamaModel,
-        });
-      }
-      if (config.provider === "bitte") {
-        return sendBitteBrowserChat({
-          messages: payloadMessages,
-          bitteApiKey: config.bitteApiKey,
-          bitteAgentId: config.bitteAgentId,
-        });
-      }
-      if (config.provider === "openclaw") {
-        return sendOpenClawBrowserChat({
-          messages: payloadMessages,
-          gatewayUrl: config.openclawGatewayUrl,
-          gatewayToken: config.openclawPairedSessionToken || config.openclawGatewayToken,
-          agentName: config.openclawPairedAgentName || config.openclawAgentName,
-        });
-      }
-      if (!canUseCurrentProvider) {
-        throw new Error(config.provider === "site" ? "NO_CREDITS" : "OPENROUTER_DETAIL:Falta la API key");
-      }
-      const reply = await streamSiteReply({
-        message,
-        history: chatHistory,
-        lang: "es",
-        character: config.character,
-        soulMd: COMPANION_SOUL,
-        provider: config.provider === "openrouter" ? "openrouter" : "site",
-        providerConfig: {
-          openrouterApiKey: config.openrouterApiKey,
-          openrouterModel: config.openrouterModel,
-        },
-      });
-      if (config.provider === "site") incrementFreeSiteMessagesUsed();
-      return reply;
-    },
-    [canUseCurrentProvider, config, incrementFreeSiteMessagesUsed],
-  );
-
-  const canTalkToConfiguredAgent =
-    canUseCurrentProvider ||
-    config.provider === "ollama" ||
-    config.provider === "bitte" ||
-    config.provider === "openclaw";
+  async function searchYoutube(query: string) {
+    const q = query.trim();
+    const asId = extractYouTubeId(q);
+    if (asId) {
+      await playClip(clipFromId(asId));
+      return;
+    }
+    if (q.length < 2) return;
+    setYtSearching(true);
+    try {
+      const res = await fetch(`/api/companion/youtube?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      const clips = Array.isArray(json?.clips) ? (json.clips as YtClip[]) : [];
+      setYtHits(clips);
+    } catch {
+      setYtHits([]);
+    } finally {
+      setYtSearching(false);
+    }
+  }
 
   async function handleTalk(text: string) {
     const message = text.trim();
@@ -553,19 +601,52 @@ export function CompanionSurface() {
     applyIntent(intent);
 
     try {
+      if (intent.type === "ask-person-agent") {
+        setMood("thinking");
+        const persona = PERSONAS[intent.to];
+        const working = agents.some((row) => row.id === intent.to && row.working);
+        let reply = localAgentReply({ person: intent.to, userText: intent.text, working });
+        if (grokOn && grok.apiKey) {
+          try {
+            reply = await askGrok({
+              apiKey: grok.apiKey,
+              soul: persona.soul,
+              message: intent.text,
+              history: nextHistory,
+              characterLabel: persona.agentName,
+            });
+          } catch {
+            // local voice already set
+          }
+        }
+        if (intent.to === "lulox") setLuloxMood(pickLuloxMood(intent.text + " " + reply));
+        pushMochi(`El agente de ${persona.name} me dijo:\n${reply}`);
+        setMood("happy");
+        return;
+      }
+
       if (intent.type === "ask-agent") {
         setMood("thinking");
-        try {
-          const agentReply = await askSiteAgent(intent.text, nextHistory);
-          pushMochi(`El agente del sitio me dijo:\n${agentReply}`);
-          setMood("happy");
-        } catch (error) {
-          pushMochi(
-            formatSiteMochiProviderError(error, true, config.provider) +
-              " Mientras tanto te hablo yo, sin inventar un botón de conexión.",
-          );
-          setMood("idle");
+        if (grokOn && grok.apiKey) {
+          try {
+            const agentReply = await askGrok({
+              apiKey: grok.apiKey,
+              soul: COMPANION_SOUL,
+              message: intent.text,
+              history: nextHistory,
+              characterLabel: "Mochi",
+            });
+            pushMochi(agentReply);
+            setMood("happy");
+            return;
+          } catch {
+            pushMochi("Grok no contestó ahora. Te hablo yo, sin inventar un botón.");
+            setMood("idle");
+            return;
+          }
         }
+        pushMochi("Para eso hace falta Conectar Grok. El botón de abajo es el flujo de verdad, en accounts.x.ai.");
+        setMood("idle");
         return;
       }
 
@@ -575,10 +656,18 @@ export function CompanionSurface() {
         return;
       }
 
-      if (canTalkToConfiguredAgent) {
+      if (grokOn && grok.apiKey) {
         setMood("thinking");
+        const persona = talkWith === "lulox" ? PERSONAS.lulox : PERSONAS.katho;
         try {
-          const reply = await askSiteAgent(message, nextHistory);
+          const reply = await askGrok({
+            apiKey: grok.apiKey,
+            soul: talkWith === "lulox" ? persona.soul : COMPANION_SOUL,
+            message,
+            history: nextHistory,
+            characterLabel: talkWith === "lulox" ? "Lulox" : "Mochi",
+          });
+          if (talkWith === "lulox") setLuloxMood(pickLuloxMood(message + " " + reply));
           pushMochi(reply || localMochiReply({ intent, userText: message, seat, todos }));
           setMood("happy");
           return;
@@ -587,7 +676,13 @@ export function CompanionSurface() {
         }
       }
 
-      pushMochi(localMochiReply({ intent, userText: message, seat, todos }));
+      if (talkWith === "lulox") {
+        const reply = localAgentReply({ person: "lulox", userText: message, working: luloxWorking });
+        setLuloxMood(pickLuloxMood(message + " " + reply));
+        pushMochi(reply);
+      } else {
+        pushMochi(localMochiReply({ intent, userText: message, seat, todos }));
+      }
       setMood("idle");
     } finally {
       setSending(false);
@@ -639,10 +734,47 @@ export function CompanionSurface() {
     setFocusApp((cur) => (cur === id ? null : cur));
   }
 
-  function openTalk() {
+  function openTalk(who: "mochi" | "lulox" = "mochi") {
+    setTalkWith(who);
     setTalkOpen(true);
     setFocusApp("talk");
     if (isMobile) setMobileTab("mochi");
+  }
+
+  function applyGrokKey() {
+    const next = connectGrokWithKey(grokKeyDraft);
+    if (!next.apiKey) return;
+    setGrok(next);
+    saveGrokSession(next);
+    setGrokKeyDraft("");
+  }
+
+  function dropGrok() {
+    const next = disconnectGrok();
+    setGrok(next);
+    saveGrokSession(next);
+  }
+
+  function askOtherAgent(from: PersonId) {
+    const text = agentAskDraft.trim();
+    if (!text) return;
+    const to = otherPerson(from);
+    const reply = localAgentReply({
+      person: to,
+      userText: text,
+      working: agents.some((row) => row.id === to && row.working),
+    });
+    if (to === "lulox") setLuloxMood(pickLuloxMood(text + " " + reply));
+    setPrivateChat((prev) => [
+      ...prev,
+      {
+        id: uid("priv"),
+        from: "mochi",
+        content: `El agente de ${PEOPLE[from].name} le preguntó al agente de ${PEOPLE[to].name}: ${text}\n— ${reply}`,
+        createdAt: nowIso(),
+      },
+    ]);
+    setAgentAskDraft("");
   }
 
 
@@ -728,25 +860,109 @@ export function CompanionSurface() {
   );
 
   const videoPanel = (
-    <section className="companion-card">
-      <h2>Video</h2>
-      <VideoFrame url={videoUrl} />
+    <section className="companion-card yt-explorer">
+      <h2>YouTube</h2>
+      <VideoFrame clip={ytNow} />
+      {ytNow ? <p className="yt-now-title">{ytNow.title}</p> : null}
       <div className="video-row">
         <input
           value={videoDraft}
           onChange={(event) => setVideoDraft(event.target.value)}
-          placeholder="YouTube o URL"
+          placeholder="Buscar, pegar URL o ID"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void searchYoutube(videoDraft);
+          }}
         />
+        <button type="button" className="ghost-btn" onClick={() => void searchYoutube(videoDraft)}>
+          {ytSearching ? "…" : "Buscar"}
+        </button>
+      </div>
+      <div className="yt-actions">
         <button
           type="button"
           className="ghost-btn"
           onClick={() => {
-            setVideoUrl(videoDraft.trim());
+            const { next, rest } = takeNextClip(ytQueue);
+            setYtQueue(rest);
+            if (next) void playClip(next);
           }}
+          disabled={!ytQueue.length}
         >
-          Poner
+          Siguiente
         </button>
       </div>
+      {ytHits.length ? (
+        <div className="yt-row">
+          <span className="yt-label">Resultados</span>
+          <div className="yt-thumbs">
+            {ytHits.map((clip) => (
+              <button key={clip.id} type="button" className="yt-thumb" onClick={() => void playClip(clip)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={clip.thumb} alt="" />
+                <span>{clip.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="yt-row">
+        <span className="yt-label">Para arrancar</span>
+        <div className="yt-thumbs">
+          {YT_STARTERS.map((clip) => (
+            <button key={clip.id} type="button" className="yt-thumb" onClick={() => void playClip(clip)}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={clip.thumb} alt="" />
+              <span>{clip.title}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {ytRecents.length ? (
+        <div className="yt-row">
+          <span className="yt-label">Recientes</span>
+          <div className="yt-thumbs">
+            {ytRecents.slice(0, 6).map((clip) => (
+              <button
+                key={clip.id}
+                type="button"
+                className="yt-thumb"
+                onClick={() => {
+                  setYtQueue((q) => enqueueClip(q, clip));
+                  void playClip(clip);
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={clip.thumb} alt="" />
+                <span>{clip.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+
+  const radioPanel = (
+    <section className="companion-card">
+      <h2>Radio</h2>
+      <p className="empty-note">
+        Sonidos de foco para el escritorio. Nada de stream inventado: se arman acá, en el
+        navegador.
+      </p>
+      <div className="radio-list">
+        {RADIO_STATIONS.map((station) => (
+          <button
+            key={station.id}
+            type="button"
+            className={`radio-btn${radioId === station.id ? " is-on" : ""}`}
+            onClick={() => setRadioId(station.id)}
+          >
+            <strong>{station.label}</strong>
+            <span>{station.hint}</span>
+          </button>
+        ))}
+      </div>
+      <RadioPlayer stationId={radioId} />
     </section>
   );
 
@@ -754,9 +970,9 @@ export function CompanionSurface() {
     <section className="companion-card">
       <h2>Agentes</h2>
       <p className="empty-note">
-        Katho y Lulox son personas-agente. Si los dejás trabajando, siguen en este navegador
-        aunque cambies de pestaña de esta pieza. No hay workers en la nube: si cerrás la
-        pestaña del browser, se pausan.
+        Katho (ella) y Lulox (él) son personas-agente. Los dos. Si los dejás trabajando, siguen
+        en este navegador. Cada uno puede hablarle al agente del otro. No hay workers en la
+        nube: si cerrás la pestaña, se pausan.
       </p>
       <div className="agent-label-row">
         <input
@@ -770,11 +986,17 @@ export function CompanionSurface() {
           <article key={agent.id} className={`agent-desk${agent.working ? " is-working" : ""}`}>
             <div className="agent-desk-chrome">
               <span className="traffic" aria-hidden />
-              <span className="desk-title">{PEOPLE[agent.id].name}</span>
+              <span className="desk-title">
+                {PEOPLE[agent.id].name} · {PERSONAS[agent.id].kind === "ninja-cat" ? "gato ninja" : "Mochi"}
+              </span>
             </div>
             <div className="agent-desk-screen">
               {agent.working ? (
-                <CompanionWorkingSprite facingRight={agent.id === "lulox"} />
+                <CompanionWorkingSprite
+                  pack={PERSONAS[agent.id].spritePack}
+                  facingRight={agent.id === "lulox"}
+                  emotion={agent.id === "lulox" ? luloxMood : "neutral"}
+                />
               ) : (
                 <p className="desk-idle">compu apagada</p>
               )}
@@ -791,9 +1013,19 @@ export function CompanionSurface() {
               <button type="button" className="ghost-btn" onClick={() => leaveWorking(agent.id)}>
                 {agent.working ? "Dejar idle" : "Dejar trabajando"}
               </button>
+              <button type="button" className="ghost-btn" onClick={() => askOtherAgent(agent.id)}>
+                Preguntarle al agente de {PEOPLE[otherPerson(agent.id)].name}
+              </button>
             </div>
           </article>
         ))}
+      </div>
+      <div className="agent-label-row">
+        <input
+          value={agentAskDraft}
+          onChange={(event) => setAgentAskDraft(event.target.value)}
+          placeholder="Qué le preguntás al agente del otro…"
+        />
       </div>
     </section>
   );
@@ -843,6 +1075,21 @@ export function CompanionSurface() {
           Enviar
         </button>
       </div>
+      <button
+        type="button"
+        className="ghost-btn"
+        onClick={() => {
+          if (!seat) return;
+          const from = otherPerson(seat);
+          setPrivateChat((prev) => [
+            ...prev,
+            simulateIncomingDm(from, `Hola ${PEOPLE[seat].name}, te escribo yo.`),
+          ]);
+        }}
+        disabled={!seat}
+      >
+        Simular que el otro escribió
+      </button>
     </section>
   );
 
@@ -857,7 +1104,7 @@ export function CompanionSurface() {
             void handleTalk(composer);
           }
         }}
-        placeholder="Hablale a ella…"
+        placeholder={talkWith === "lulox" ? "Hablale a él…" : "Hablale a ella…"}
         rows={2}
         aria-label="Mensaje para Mochi"
       />
@@ -871,8 +1118,9 @@ export function CompanionSurface() {
     <div className="speech-stack" ref={logRef} aria-live="polite">
       {petChat.length === 0 ? (
         <div className="speech-bubble mochi">
-          Hola. Soy Mochi. Hablame, che. Si querés que le deje un recado a Katho o a Lulox, lo
-          llevo yo. El agente del sitio lo uso si me lo pedís — no hay botón falso de conexión.
+          Hola. Soy Mochi, tu compañera. Hablame, che. Si querés que le deje un recado a Katho o
+          a Lulox, lo llevo yo. Si no hay Grok conectado, el botón Conectar abre accounts.x.ai
+          de verdad.
         </div>
       ) : (
         petChat.slice(-12).map((row) => (
@@ -884,20 +1132,52 @@ export function CompanionSurface() {
     </div>
   );
 
-  const conectar = !canTalkToConfiguredAgent ? (
+  const grokReturnTo =
+    typeof window === "undefined" ? "https://grok.com/" : `${window.location.origin}/companion?grok=return`;
+  const grokConnectHref = buildGrokConnectUrl({ returnTo: grokReturnTo });
+
+  const conectar = grokOn ? (
     <p className="connect-note">
-      Para hablar con el agente del sitio (OpenRouter, Ollama, Bitte, OpenClaw o créditos)
-      conectalo en ajustes. Yo igual te escucho acá.
-      <Link href="/settings" className="conectar-btn">
-        Conectar
-      </Link>
+      Grok está conectado.
+      <button type="button" className="ghost-btn" onClick={dropGrok}>
+        Salir
+      </button>
     </p>
-  ) : null;
+  ) : (
+    <div className="connect-note">
+      <p>
+        Para hablar con Grok hace falta una cuenta de xAI. El botón abre el flujo real en
+        accounts.x.ai — no es un atajo a ajustes.
+      </p>
+      <a className="conectar-btn" href={grokConnectHref}>
+        Conectar Grok
+      </a>
+      <p className="empty-note">
+        Cuando vuelvas, pegá la clave de{" "}
+        <a href={GROK_CONSOLE_KEYS} target="_blank" rel="noreferrer">
+          console.x.ai
+        </a>
+        .
+      </p>
+      <div className="todo-row">
+        <input
+          value={grokKeyDraft}
+          onChange={(event) => setGrokKeyDraft(event.target.value)}
+          placeholder="xai-…"
+          autoComplete="off"
+        />
+        <button type="button" className="ghost-btn" onClick={applyGrokKey}>
+          Guardar
+        </button>
+      </div>
+    </div>
+  );
 
   const panelFor = (id: DeskAppId) => {
     if (id === "pomo") return pomoPanel;
     if (id === "notas") return todosPanel;
     if (id === "video") return videoPanel;
+    if (id === "radio") return radioPanel;
     if (id === "dm") return privatePanel;
     return agentsPanel;
   };
@@ -909,11 +1189,23 @@ export function CompanionSurface() {
   return (
     <div className="companion-root" data-companion-surface>
       <CompanionWanderer
-        working={mochiWorking}
+        working={mochiWorking || kathoWorking}
         perch={perch}
         scale={isMobile ? 0.55 : 0.72}
-        onClick={openTalk}
+        pack="mochi"
+        alertText={mascotAlert}
+        onClick={() => openTalk("mochi")}
       />
+      {isMobile ? null : (
+        <CompanionWanderer
+          working={luloxWorking}
+          perch={null}
+          scale={0.62}
+          pack="lulox"
+          label="Lulox, el gato ninja"
+          onClick={() => openTalk("lulox")}
+        />
+      )}
       <Link href="/" className="companion-back">
         ← al sitio
       </Link>
@@ -942,11 +1234,11 @@ export function CompanionSurface() {
               className={`desk-window desk-talk${focusApp === "talk" ? " is-focus" : ""}`}
               onPointerDown={() => setFocusApp("talk")}
               role="dialog"
-              aria-label="Hablar con Mochi"
+              aria-label={talkWith === "lulox" ? "Hablar con Lulox" : "Hablar con Mochi"}
             >
               <header className="desk-window-chrome">
                 <span className="traffic" aria-hidden />
-                <span>Mochi</span>
+                <span>{talkWith === "lulox" ? "Lulox" : "Mochi"}</span>
                 <button
                   type="button"
                   className="desk-close"
@@ -1037,7 +1329,12 @@ export function CompanionSurface() {
             <div className="mobile-sheet">
               {mobileTab === "pomo" ? pomoPanel : null}
               {mobileTab === "notas" ? todosPanel : null}
-              {mobileTab === "video" ? videoPanel : null}
+              {mobileTab === "video" ? (
+                <>
+                  {videoPanel}
+                  {radioPanel}
+                </>
+              ) : null}
               {mobileTab === "dm" ? (
                 <>
                   {agentsPanel}

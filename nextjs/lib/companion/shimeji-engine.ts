@@ -11,6 +11,9 @@
 export const SPRITE_SIZE = 128;
 export const TICK_MS = 40;
 export const SPRITE_BASE = "/sprites/mochi/";
+export const LULOX_SPRITE_BASE = "/sprites/lulox/";
+
+export type SpritePackId = "mochi" | "lulox";
 
 export const PHYSICS = {
   gravity: 2,
@@ -49,6 +52,29 @@ export const SPRITES: Record<string, string> = {
   "sit-pc-edge-legs-down": "sit-pc-edge-legs-down.png",
   "sit-pc-edge-dangle-frame-1": "sit-pc-edge-dangle-frame-1.png",
   "sit-pc-edge-dangle-frame-2": "sit-pc-edge-dangle-frame-2.png",
+  icon: "icon.png",
+};
+
+/** Lulox ninja-cat: black cat, tail bandage, fangs. Never reuse Mochi sit-pc. */
+export const LULOX_SPRITES: Record<string, string> = {
+  "stand-neutral": "stand-neutral.png",
+  "walk-step-left": "walk-step-left.png",
+  "walk-step-right": "walk-step-right.png",
+  "sprawl-lying": "sit-edge.png",
+  "sit-edge-legs-down": "sit-edge.png",
+  "sit-edge-dangle-frame-1": "sit-edge.png",
+  "sit-edge-dangle-frame-2": "sit-edge.png",
+  "spin-head-frame-1": "emotion-happy.png",
+  "spin-head-frame-2": "emotion-happy.png",
+  "spin-head-frame-3": "stand-neutral.png",
+  "spin-head-frame-4": "emotion-negative.png",
+  "spin-head-frame-5": "emotion-negative.png",
+  "spin-head-frame-6": "stand-neutral.png",
+  "sit-pc-edge-legs-down": "sit-pc.png",
+  "sit-pc-edge-dangle-frame-1": "sit-pc.png",
+  "sit-pc-edge-dangle-frame-2": "sit-edge.png",
+  "emotion-happy": "emotion-happy.png",
+  "emotion-negative": "emotion-negative.png",
   icon: "icon.png",
 };
 
@@ -110,9 +136,26 @@ function setWalkDirection(m: ShimejiMascot, facingRight: boolean) {
   }
 }
 
-export function spriteUrl(key: string): string {
+export function spriteUrl(key: string, pack: SpritePackId = "mochi"): string {
+  if (pack === "lulox") {
+    const file = LULOX_SPRITES[key] || LULOX_SPRITES["stand-neutral"];
+    return `${LULOX_SPRITE_BASE}${file}`;
+  }
   const file = SPRITES[key] || SPRITES["stand-neutral"];
   return `${SPRITE_BASE}${file}`;
+}
+
+export function startWalking(m: ShimejiMascot, facingRight: boolean) {
+  setWalkDirection(m, facingRight);
+  setAnim(m, State.WALKING, walkCycleName(facingRight));
+}
+
+export function sitAtPcSpriteKeys(): string[] {
+  return ["sit-pc-edge-legs-down", "sit-pc-edge-dangle-frame-1", "sit-pc-edge-dangle-frame-2"];
+}
+
+export function isSitPcSprite(key: string): boolean {
+  return sitAtPcSpriteKeys().includes(key);
 }
 
 export const PREFETCH_SPRITE_KEYS = Object.keys(SPRITES);

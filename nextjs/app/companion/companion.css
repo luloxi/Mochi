@@ -970,7 +970,8 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 
 .desk-win-pomo { left: 24px; top: 72px; width: min(280px, 40vw); }
 .desk-win-notas { left: 320px; top: 64px; width: min(300px, 40vw); }
-.desk-win-video { right: 28px; top: 72px; width: min(380px, 44vw); }
+.desk-win-video { right: 28px; top: 56px; width: min(400px, 46vw); }
+.desk-win-radio { right: 28px; top: 48%; width: min(280px, 40vw); }
 .desk-win-dm { left: 48px; bottom: 96px; width: min(320px, 42vw); }
 .desk-win-agentes { right: 36px; bottom: 96px; width: min(300px, 40vw); }
 
@@ -1101,4 +1102,109 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 .mobile-mochi .connect-note {
   margin: 8px 0;
   color: rgba(42, 26, 51, 0.8);
+}
+
+.mascot-alert {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translate(-50%, -6px);
+  background: #fff8fc;
+  color: #2a1a33;
+  border: 1px solid rgba(255, 154, 216, 0.5);
+  border-radius: 14px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 10px 24px rgba(42, 16, 40, 0.25);
+  pointer-events: none;
+}
+
+.yt-now-title {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.yt-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7a4a6a;
+  margin: 8px 0 4px;
+}
+
+.yt-thumbs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.yt-thumb {
+  border: 1px solid var(--c-line);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  color: var(--c-ink);
+}
+
+.yt-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.yt-thumb span {
+  display: block;
+  padding: 4px 6px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.yt-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.radio-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 1px solid var(--c-line);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--c-ink);
+}
+
+.radio-btn.is-on {
+  background: #2a1a33;
+  color: #fff8fc;
+  border-color: #2a1a33;
+}
+
+.radio-btn span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.connect-note a {
+  color: inherit;
 }
