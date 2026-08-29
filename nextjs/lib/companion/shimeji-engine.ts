@@ -54,14 +54,25 @@ export const SPRITES: Record<string, string> = {
 
 type AnimFrame = { sprite: string; duration: number };
 
+const WALK_LEFT_CYCLE: AnimFrame[] = [
+  { sprite: "stand-neutral", duration: 6 },
+  { sprite: "walk-step-left", duration: 6 },
+  { sprite: "stand-neutral", duration: 6 },
+  { sprite: "walk-step-right", duration: 6 },
+];
+
+const WALK_RIGHT_CYCLE: AnimFrame[] = [
+  { sprite: "stand-neutral", duration: 6 },
+  { sprite: "walk-step-right", duration: 6 },
+  { sprite: "stand-neutral", duration: 6 },
+  { sprite: "walk-step-left", duration: 6 },
+];
+
 export const ANIMATIONS_FULL: Record<string, AnimFrame[]> = {
   idle: [{ sprite: "stand-neutral", duration: 1 }],
-  walking: [
-    { sprite: "stand-neutral", duration: 6 },
-    { sprite: "walk-step-left", duration: 6 },
-    { sprite: "stand-neutral", duration: 6 },
-    { sprite: "walk-step-right", duration: 6 },
-  ],
+  walking: WALK_RIGHT_CYCLE,
+  walkingLeft: WALK_LEFT_CYCLE,
+  walkingRight: WALK_RIGHT_CYCLE,
   falling: [{ sprite: "stand-neutral", duration: 1 }],
   sprawled: [{ sprite: "sprawl-lying", duration: 1 }],
   sittingEdge: [
@@ -84,6 +95,20 @@ export const ANIMATIONS_FULL: Record<string, AnimFrame[]> = {
     { sprite: "sit-pc-edge-dangle-frame-2", duration: 15 },
   ],
 };
+
+function walkCycleName(facingRight: boolean) {
+  return facingRight ? "walkingRight" : "walkingLeft";
+}
+
+/** Switch left/right walk clip without resetting the frame clock. */
+function setWalkDirection(m: ShimejiMascot, facingRight: boolean) {
+  m.facingRight = facingRight;
+  m.direction = facingRight ? 1 : -1;
+  const next = walkCycleName(facingRight);
+  if (m.state === State.WALKING && m.currentAnimation !== next) {
+    m.currentAnimation = next;
+  }
+}
 
 export function spriteUrl(key: string): string {
   const file = SPRITES[key] || SPRITES["stand-neutral"];
@@ -228,9 +253,10 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
       if (m.stateTimer > 40 && Math.random() < 0.03) {
         const roll = Math.random();
         if (roll < 0.58) {
-          setAnim(m, State.WALKING, "walking");
-          m.direction = Math.random() > 0.5 ? 1 : -1;
-          m.facingRight = m.direction > 0;
+          const facingRight = Math.random() > 0.5;
+          m.direction = facingRight ? 1 : -1;
+          m.facingRight = facingRight;
+          setAnim(m, State.WALKING, walkCycleName(facingRight));
         } else if (roll < 0.78) {
           setAnim(m, State.SITTING_EDGE, "sittingEdge");
         } else if (roll < 0.9) {
@@ -252,8 +278,7 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
           m.facingRight = true;
           break;
         }
-        m.direction = 1;
-        m.facingRight = true;
+        setWalkDirection(m, true);
       } else if (m.x >= rightBound) {
         m.x = rightBound;
         if (Math.random() < 0.35) {
@@ -261,8 +286,7 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
           m.facingRight = false;
           break;
         }
-        m.direction = -1;
-        m.facingRight = false;
+        setWalkDirection(m, false);
       }
       if (m.stateTimer > 50 && Math.random() < 0.012) {
         setAnim(m, State.IDLE, "idle");

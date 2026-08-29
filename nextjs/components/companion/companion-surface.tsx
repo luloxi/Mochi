@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import Link from "next/link";
 import { CompanionWanderer, CompanionWorkingSprite } from "@/components/companion/companion-pet";
@@ -20,10 +21,12 @@ import {
 import {
   COMPANION_SOUL,
   COMPANION_STORAGE,
+  DESK_APPS,
   PEOPLE,
   type AgentJob,
   type CompanionIntent,
   type CompanionMsg,
+  type DeskAppId,
   type PersonId,
   type PetMood,
   type PrivateMsg,
@@ -31,6 +34,7 @@ import {
   extractYouTubeId,
   formatWorkClock,
   loadAgents,
+  loadOpenApps,
   loadPetChat,
   loadPrivateChat,
   loadSeat,
@@ -40,6 +44,7 @@ import {
   otherPerson,
   parseCompanionIntent,
   saveAgents,
+  saveOpenApps,
   savePetChat,
   savePrivateChat,
   saveSeat,
@@ -64,6 +69,38 @@ function useIsMobile() {
 }
 
 type MobileTab = "mochi" | "pomo" | "notas" | "video" | "nosotras";
+
+function DeskWindow({
+  appId,
+  title,
+  focused,
+  onFocus,
+  onClose,
+  children,
+}: {
+  appId: DeskAppId;
+  title: string;
+  focused: boolean;
+  onFocus: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={`desk-window desk-win-${appId}${focused ? " is-focus" : ""}`}
+      onPointerDown={onFocus}
+    >
+      <header className="desk-window-chrome">
+        <span className="traffic" aria-hidden />
+        <span>{title}</span>
+        <button type="button" className="desk-close" onClick={onClose} aria-label={`Cerrar ${title}`}>
+          ×
+        </button>
+      </header>
+      <div className="desk-window-body">{children}</div>
+    </section>
+  );
+}
 
 function parseSseBlock(block: string) {
   const lines = block.split(/\r?\n/);
@@ -237,6 +274,10 @@ export function CompanionSurface() {
   const [perch, setPerch] = useState<{ x: number; y: number } | null>(null);
   const [agentLabelDraft, setAgentLabelDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<MobileTab>("mochi");
+  const [talkOpen, setTalkOpen] = useState(false);
+  const [openApps, setOpenApps] = useState<DeskAppId[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [focusApp, setFocusApp] = useState<DeskAppId | "talk" | null>(null);
   const [pomoSeconds, setPomoSeconds] = useState(25 * 60);
   const [pomoTotal, setPomoTotal] = useState(25 * 60);
   const [pomoRunning, setPomoRunning] = useState(false);
@@ -252,6 +293,7 @@ export function CompanionSurface() {
     setPrivateChat(loadPrivateChat());
     setTodos(loadTodos());
     setAgents(loadAgents());
+    setOpenApps(loadOpenApps());
     const storedVideo = loadVideoUrl();
     setVideoUrl(storedVideo);
     setVideoDraft(storedVideo);
@@ -272,6 +314,7 @@ export function CompanionSurface() {
       if (event.key === COMPANION_STORAGE.petChat) setPetChat(loadPetChat());
       if (event.key === COMPANION_STORAGE.seat) setSeat(loadSeat());
       if (event.key === COMPANION_STORAGE.agents) setAgents(loadAgents());
+      if (event.key === COMPANION_STORAGE.openApps) setOpenApps(loadOpenApps());
     };
     const onAgents = () => setAgents(loadAgents());
     window.addEventListener("storage", onStorage);
@@ -307,13 +350,17 @@ export function CompanionSurface() {
     if (!hydrated.current) return;
     saveAgents(agents);
   }, [agents]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    saveOpenApps(openApps);
+  }, [openApps]);
 
   useEffect(() => {
-    if (!mochiWorking || isMobile) {
+    if (!mochiWorking || isMobile || !talkOpen) {
       setPerch(null);
       return;
     }
-    const el = document.querySelector(".room-window");
+    const el = document.querySelector(".desk-talk");
     if (!(el instanceof HTMLElement)) {
       setPerch(null);
       return;
@@ -321,7 +368,7 @@ export function CompanionSurface() {
     const r = el.getBoundingClientRect();
     const size = 128 * 0.72;
     setPerch({ x: r.left + r.width * 0.58 - size / 2, y: r.top + 28 });
-  }, [mochiWorking, isMobile]);
+  }, [mochiWorking, isMobile, talkOpen]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -578,6 +625,26 @@ export function CompanionSurface() {
     setAgentLabelDraft("");
   }
 
+  function toggleApp(id: DeskAppId) {
+    setOpenApps((prev) => {
+      if (prev.includes(id)) return prev.filter((row) => row !== id);
+      setFocusApp(id);
+      return [...prev, id];
+    });
+    setPickerOpen(false);
+  }
+
+  function closeApp(id: DeskAppId) {
+    setOpenApps((prev) => prev.filter((row) => row !== id));
+    setFocusApp((cur) => (cur === id ? null : cur));
+  }
+
+  function openTalk() {
+    setTalkOpen(true);
+    setFocusApp("talk");
+    if (isMobile) setMobileTab("mochi");
+  }
+
 
   const pomoPanel = (
     <section className="companion-card">
@@ -817,45 +884,128 @@ export function CompanionSurface() {
     </div>
   );
 
+  const conectar = !canTalkToConfiguredAgent ? (
+    <p className="connect-note">
+      Para hablar con el agente del sitio (OpenRouter, Ollama, Bitte, OpenClaw o créditos)
+      conectalo en ajustes. Yo igual te escucho acá.
+      <Link href="/settings" className="conectar-btn">
+        Conectar
+      </Link>
+    </p>
+  ) : null;
+
+  const panelFor = (id: DeskAppId) => {
+    if (id === "pomo") return pomoPanel;
+    if (id === "notas") return todosPanel;
+    if (id === "video") return videoPanel;
+    if (id === "dm") return privatePanel;
+    return agentsPanel;
+  };
+
   if (isMobile === null) {
     return <div className="companion-root" data-companion-surface />;
   }
 
   return (
     <div className="companion-root" data-companion-surface>
-      <CompanionWanderer working={mochiWorking} perch={perch} scale={isMobile ? 0.55 : 0.72} />
+      <CompanionWanderer
+        working={mochiWorking}
+        perch={perch}
+        scale={isMobile ? 0.55 : 0.72}
+        onClick={openTalk}
+      />
       <Link href="/" className="companion-back">
         ← al sitio
       </Link>
 
       {isMobile ? null : (
         <div className="companion-desktop">
-          <div className="companion-col">
-            {pomoPanel}
-            {todosPanel}
-          </div>
-          <div className="companion-stage">
-            <div className="room-window" data-companion-perch={sending || mood === "thinking" ? "on" : "off"}>
-              <div className="room-window-chrome">
+          {openApps.map((id) => {
+            const meta = DESK_APPS.find((row) => row.id === id);
+            if (!meta) return null;
+            return (
+              <DeskWindow
+                key={id}
+                appId={id}
+                title={meta.label}
+                focused={focusApp === id}
+                onFocus={() => setFocusApp(id)}
+                onClose={() => closeApp(id)}
+              >
+                {panelFor(id)}
+              </DeskWindow>
+            );
+          })}
+
+          {talkOpen ? (
+            <section
+              className={`desk-window desk-talk${focusApp === "talk" ? " is-focus" : ""}`}
+              onPointerDown={() => setFocusApp("talk")}
+              role="dialog"
+              aria-label="Hablar con Mochi"
+            >
+              <header className="desk-window-chrome">
                 <span className="traffic" aria-hidden />
                 <span>Mochi</span>
-              </div>
-              <div className="room-window-body">
+                <button
+                  type="button"
+                  className="desk-close"
+                  onClick={() => setTalkOpen(false)}
+                  aria-label="Cerrar"
+                >
+                  ×
+                </button>
+              </header>
+              <div className="desk-window-body desk-talk-body">
                 {speech}
+                {conectar}
+                {composerForm}
               </div>
+            </section>
+          ) : null}
+
+          {pickerOpen ? (
+            <div className="desk-picker" role="menu" aria-label="Miniapps">
+              {DESK_APPS.map((app) => {
+                const open = openApps.includes(app.id);
+                return (
+                  <button
+                    key={app.id}
+                    type="button"
+                    className={open ? "is-on" : ""}
+                    onClick={() => toggleApp(app.id)}
+                  >
+                    {open ? "Quitar" : "Sumar"} {app.label}
+                  </button>
+                );
+              })}
             </div>
-            {composerForm}
-            <p className="companion-hint">
-              Ella camina la pieza con el Mochi de Katho (capa roja/amarilla). Idle deambula; si el agente está
-              trabajando se sienta en el borde de la compu. Pedile un pomodoro, un video, una
-              nota, un recado, o que le pregunte al agente del sitio.
-            </p>
-          </div>
-          <div className="companion-col">
-            {agentsPanel}
-            {privatePanel}
-            {videoPanel}
-          </div>
+          ) : null}
+
+          <nav className="desk-dock" aria-label="Dock del escritorio">
+            {openApps.map((id) => {
+              const meta = DESK_APPS.find((row) => row.id === id);
+              if (!meta) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={focusApp === id ? "is-on" : ""}
+                  onClick={() => setFocusApp(id)}
+                >
+                  {meta.label}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              className={`desk-plus${pickerOpen ? " is-on" : ""}`}
+              onClick={() => setPickerOpen((v) => !v)}
+              aria-label="Agregar o quitar miniapps"
+            >
+              +
+            </button>
+          </nav>
         </div>
       )}
 
@@ -866,8 +1016,8 @@ export function CompanionSurface() {
               <div className="mobile-log" ref={mobileLogRef} aria-live="polite">
                 {petChat.length === 0 ? (
                   <div className="speech-bubble mochi">
-                    Acá abajo me hablás. El resto de las cosas vive en las pestañas, no en un
-                    escritorio achicado.
+                    Tocame y hablame. El resto vive en el dock de abajo, no en un escritorio
+                    achicado.
                   </div>
                 ) : (
                   petChat.slice(-20).map((row) => (
@@ -880,6 +1030,7 @@ export function CompanionSurface() {
                   ))
                 )}
               </div>
+              {conectar}
               {composerForm}
             </div>
           ) : (

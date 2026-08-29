@@ -33,7 +33,10 @@ function isEyeColor(r: number, g: number, b: number, a: number) {
 function findEyes(data: Uint8ClampedArray, width: number, height: number): Eye[] {
   const filled: number[] = [];
   const idx = (x: number, y: number) => (y * width + x) * 4;
-  for (let y = 2; y < height - 2; y++) {
+  // Eyes live in the head. Cloak/foot blue outlines below ~0.48 invert the
+  // star swap and make the walk look backwards — never treat them as eyes.
+  const headMaxY = Math.floor(height * 0.48);
+  for (let y = 2; y < Math.min(height - 2, headMaxY); y++) {
     for (let x = 2; x < width - 2; x++) {
       const i = idx(x, y);
       if (!isBlue(data[i], data[i + 1], data[i + 2], data[i + 3])) continue;
@@ -98,6 +101,8 @@ function findEyes(data: Uint8ClampedArray, width: number, height: number): Eye[]
     }
     const bw = x1 - x0 + 1;
     const bh = y1 - y0 + 1;
+    const cy = sy / c.length;
+    if (cy >= height * 0.48) continue;
     if (bw < 12 || bh < 12 || bw > 50 || bh > 50) continue;
     if (bh > bw * 1.8 || bw > bh * 2.2) continue;
     eyes.push({
@@ -106,7 +111,7 @@ function findEyes(data: Uint8ClampedArray, width: number, height: number): Eye[]
       x1,
       y1,
       cx: sx / c.length,
-      cy: sy / c.length,
+      cy,
       n: c.length,
     });
   }

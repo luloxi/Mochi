@@ -2,6 +2,18 @@ export type PersonId = "katho" | "lulox";
 
 export type PetMood = "idle" | "listening" | "thinking" | "happy" | "sleepy" | "delivering";
 
+export type DeskAppId = "pomo" | "notas" | "video" | "dm" | "agentes";
+
+export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "dm", "agentes"];
+
+export const DESK_APPS: { id: DeskAppId; label: string }[] = [
+  { id: "pomo", label: "Pomodoro" },
+  { id: "notas", label: "Notas" },
+  { id: "video", label: "Video" },
+  { id: "dm", label: "DM" },
+  { id: "agentes", label: "Agentes" },
+];
+
 export type CompanionMsg = {
   id: string;
   role: "user" | "mochi";
@@ -46,6 +58,7 @@ export const COMPANION_STORAGE = {
   todos: "mochi-companion-todos-v1",
   video: "mochi-companion-video-v1",
   agents: "mochi-companion-agents-v1",
+  openApps: "mochi-companion-open-apps-v1",
 } as const;
 
 export const PEOPLE: Record<
@@ -131,6 +144,20 @@ export function loadVideoUrl(): string {
 
 export function saveVideoUrl(url: string) {
   writeJson(COMPANION_STORAGE.video, url);
+}
+
+export function loadOpenApps(): DeskAppId[] {
+  const rows = readJson<string[]>(COMPANION_STORAGE.openApps, []);
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((id): id is DeskAppId => (DESK_APP_IDS as string[]).includes(id));
+}
+
+export function saveOpenApps(ids: DeskAppId[]) {
+  const unique: DeskAppId[] = [];
+  for (const id of ids) {
+    if (DESK_APP_IDS.includes(id) && !unique.includes(id)) unique.push(id);
+  }
+  writeJson(COMPANION_STORAGE.openApps, unique);
 }
 
 
