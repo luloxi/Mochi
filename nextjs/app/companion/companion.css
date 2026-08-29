@@ -882,3 +882,31 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 .mobile-dock {
   z-index: 36;
 }
+/* Katho Mochi: don't pixelate her drawings; star-eye overlay (cloak stays unflipped) */
+.companion-mascot,
+.companion-working-sprite {
+  position: relative;
+  image-rendering: auto;
+  overflow: visible;
+}
+
+.companion-star-cover {
+  position: absolute;
+  width: 12%;
+  height: 10%;
+  transform: translate(-50%, -50%);
+  background: #1158cc;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.companion-star-eye {
+  position: absolute;
+  width: 11%;
+  height: 11%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: #fff;
+  clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+  filter: drop-shadow(0 0 1px #fff);
+}

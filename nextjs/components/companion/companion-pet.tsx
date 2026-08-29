@@ -12,6 +12,7 @@ import {
   moveDrag,
   setWorking,
   spriteUrl,
+  starEyeLayout,
   tickShimeji,
   type Bounds,
   type Perch,
@@ -45,6 +46,28 @@ function useBounds(node: HTMLElement | null): Bounds {
     return () => window.removeEventListener("resize", read);
   }, [node]);
   return bounds;
+}
+
+function StarEye({ facingRight }: { facingRight: boolean }) {
+  const layout = starEyeLayout(facingRight);
+  return (
+    <>
+      {layout.cover ? (
+        <span
+          className="companion-star-cover"
+          style={{ left: layout.coverPos.x, top: layout.coverPos.y }}
+          aria-hidden
+        />
+      ) : null}
+      {layout.overlay ? (
+        <span
+          className="companion-star-eye"
+          style={{ left: layout.overlayPos.x, top: layout.overlayPos.y }}
+          aria-hidden
+        />
+      ) : null}
+    </>
+  );
 }
 
 export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: CompanionPetProps) {
@@ -124,7 +147,6 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
             width: box.size,
             height: box.size,
             backgroundImage: `url("${spriteUrl(m.spriteKey)}")`,
-            transform: m.transform,
             cursor: m.isDragging ? "grabbing" : "grab",
           }}
           aria-label="Mochi, arrastrala o mirala caminar"
@@ -132,7 +154,9 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
           onPointerCancel={pointerUp}
-        />
+        >
+          <StarEye facingRight={m.facingRight} />
+        </button>
       ) : null}
     </div>
   );
@@ -169,10 +193,11 @@ export function CompanionWorkingSprite({
         width: size,
         height: size,
         backgroundImage: `url("${spriteUrl(m.spriteKey)}")`,
-        transform: facingRight ? "scaleX(-1)" : "scaleX(1)",
       }}
       role="img"
       aria-label="Mochi trabajando en la compu"
-    />
+    >
+      <StarEye facingRight={facingRight} />
+    </div>
   );
 }
