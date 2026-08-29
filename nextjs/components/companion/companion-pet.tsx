@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
+  PREFETCH_SPRITE_KEYS,
   SPRITE_SIZE,
   TICK_MS,
   beginDragPending,
@@ -12,12 +13,12 @@ import {
   moveDrag,
   setWorking,
   spriteUrl,
-  starEyeLayout,
   tickShimeji,
   type Bounds,
   type Perch,
   type ShimejiMascot,
 } from "@/lib/companion/shimeji-engine";
+import { drawFacingSprite, prefetchFacingSprites } from "@/lib/companion/star-eye";
 
 type CompanionPetProps = {
   working: boolean;
@@ -48,35 +49,32 @@ function useBounds(node: HTMLElement | null): Bounds {
   return bounds;
 }
 
-function StarEye({ facingRight }: { facingRight: boolean }) {
-  const layout = starEyeLayout(facingRight);
-  return (
-    <>
-      {layout.cover ? (
-        <span
-          className="companion-star-cover"
-          style={{ left: layout.coverPos.x, top: layout.coverPos.y }}
-          aria-hidden
-        />
-      ) : null}
-      {layout.overlay ? (
-        <span
-          className="companion-star-eye"
-          style={{ left: layout.overlayPos.x, top: layout.overlayPos.y }}
-          aria-hidden
-        />
-      ) : null}
-    </>
-  );
+function MochiCanvas({
+  spriteKey,
+  facingRight,
+}: {
+  spriteKey: string;
+  facingRight: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    void drawFacingSprite(canvas, spriteUrl(spriteKey), facingRight);
+  }, [spriteKey, facingRight]);
+  return <canvas ref={canvasRef} aria-hidden />;
 }
 
 export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: CompanionPetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mascotRef = useRef<ShimejiMascot | null>(null);
-  const cursorY = useRef<number | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [, setTick] = useState(0);
   const bounds = useBounds(host);
+
+  useEffect(() => {
+    prefetchFacingSprites(PREFETCH_SPRITE_KEYS.map((key) => spriteUrl(key)));
+  }, []);
 
   useEffect(() => {
     setHost(hostRef.current);
@@ -91,18 +89,13 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
   }, [working]);
 
   useEffect(() => {
-    const onMove = (event: MouseEvent) => {
-      cursorY.current = event.clientY;
-    };
-    window.addEventListener("mousemove", onMove);
     const id = window.setInterval(() => {
       const m = mascotRef.current;
       if (!m) return;
-      tickShimeji(m, bounds, scale, cursorY.current, perch);
+      tickShimeji(m, bounds, scale, null, perch);
       setTick((n) => (n + 1) % 1_000_000);
     }, TICK_MS);
     return () => {
-      window.removeEventListener("mousemove", onMove);
       window.clearInterval(id);
     };
   }, [bounds, perch, scale]);
@@ -146,7 +139,6 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
             top: box.top,
             width: box.size,
             height: box.size,
-            backgroundImage: `url("${spriteUrl(m.spriteKey)}")`,
             cursor: m.isDragging ? "grabbing" : "grab",
           }}
           aria-label="Mochi, arrastrala o mirala caminar"
@@ -155,7 +147,7 @@ export function CompanionWanderer({ working, perch, scale = 0.72, onClick }: Com
           onPointerUp={pointerUp}
           onPointerCancel={pointerUp}
         >
-          <StarEye facingRight={m.facingRight} />
+          <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} />
         </button>
       ) : null}
     </div>
@@ -178,6 +170,7 @@ export function CompanionWorkingSprite({
     mascotRef.current = m;
     const id = window.setInterval(() => {
       tickShimeji(m, { width: 180, height: 140 }, scale, null, { x: 16, y: SPRITE_SIZE * scale });
+      m.facingRight = facingRight;
       setTick((n) => (n + 1) % 1_000_000);
     }, TICK_MS);
     return () => window.clearInterval(id);
@@ -189,15 +182,11 @@ export function CompanionWorkingSprite({
   return (
     <div
       className="companion-working-sprite"
-      style={{
-        width: size,
-        height: size,
-        backgroundImage: `url("${spriteUrl(m.spriteKey)}")`,
-      }}
+      style={{ width: size, height: size }}
       role="img"
       aria-label="Mochi trabajando en la compu"
     >
-      <StarEye facingRight={facingRight} />
+      <MochiCanvas spriteKey={m.spriteKey} facingRight={facingRight} />
     </div>
   );
 }

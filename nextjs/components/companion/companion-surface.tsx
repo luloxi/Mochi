@@ -846,7 +846,7 @@ export function CompanionSurface() {
             </div>
             {composerForm}
             <p className="companion-hint">
-              Ella camina la pieza con los sprites de Katho. Idle deambula; si el agente está
+              Ella camina la pieza con el Mochi de Katho (capa roja/amarilla). Idle deambula; si el agente está
               trabajando se sienta en el borde de la compu. Pedile un pomodoro, un video, una
               nota, un recado, o que le pregunte al agente del sitio.
             </p>

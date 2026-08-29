@@ -8,7 +8,6 @@ const VALID_PREFIXES = [
   "/character-creator",
   "/collection",
   "/companion",
-  "/characters/",
   "/download",
   "/downloads",
   "/help",

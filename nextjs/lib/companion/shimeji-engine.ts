@@ -1,10 +1,11 @@
 /**
- * Companion shimeji runtime for Katho's Mochi (characters/mochi).
- * Walk / sit-pc-edge / spin / sprawl using frames that exist in
- * nextjs/public/sprites/mochi/. No climb set on this character.
+ * Companion wander runtime for Katho's Mochi (chrome-extension/characters/mochi).
+ * Served from /sprites/mochi/. This set has no climb-wall frames — don't invent climb.
+ * Available: stand-neutral, walk-step-left/right, sit-edge-*, sit-pc-edge-*,
+ * spin-head-frame-1..6, sprawl-lying, icon.
  *
- * Cloak is asymmetric (red | yellow): never scaleX the body.
- * Star-eye is composited in the pet view so it leads the walk.
+ * Facing is expressed by moving the star to the leading eye (see star-eye.ts),
+ * never by scaleX(-1), so the red/yellow cloak stays put.
  */
 
 export const SPRITE_SIZE = 128;
@@ -15,31 +16,22 @@ export const PHYSICS = {
   gravity: 2,
   walkSpeed: 2,
   fallTerminalVelocity: 20,
-  jumpForce: -12,
-  collisionJumpSpeed: 3.2,
 } as const;
 
 export const State = {
   IDLE: "idle",
   WALKING: "walking",
-  CRAWLING: "crawling",
   FALLING: "falling",
-  LANDING: "landing",
-  SITTING: "sitting",
-  DRAGGED: "dragged",
-  JUMPING: "jumping",
-  CLIMBING_WALL: "climbing_wall",
-  CLIMBING_CEILING: "climbing_ceiling",
   SITTING_EDGE: "sitting_edge",
-  SITTING_PC: "sitting_pc",
-  SITTING_PC_DANGLE: "sitting_pc_dangle",
+  DRAGGED: "dragged",
   HEAD_SPIN: "head_spin",
   SPRAWLED: "sprawled",
+  SITTING_PC: "sitting_pc",
+  SITTING_PC_DANGLE: "sitting_pc_dangle",
 } as const;
 
 export type ShimejiState = (typeof State)[keyof typeof State];
 
-/** Only filenames that exist on characters/mochi (also public/sprites/mochi). */
 export const SPRITES: Record<string, string> = {
   "stand-neutral": "stand-neutral.png",
   "walk-step-left": "walk-step-left.png",
@@ -57,6 +49,7 @@ export const SPRITES: Record<string, string> = {
   "sit-pc-edge-legs-down": "sit-pc-edge-legs-down.png",
   "sit-pc-edge-dangle-frame-1": "sit-pc-edge-dangle-frame-1.png",
   "sit-pc-edge-dangle-frame-2": "sit-pc-edge-dangle-frame-2.png",
+  icon: "icon.png",
 };
 
 type AnimFrame = { sprite: string; duration: number };
@@ -69,18 +62,8 @@ export const ANIMATIONS_FULL: Record<string, AnimFrame[]> = {
     { sprite: "stand-neutral", duration: 6 },
     { sprite: "walk-step-right", duration: 6 },
   ],
-  crawling: [
-    { sprite: "sprawl-lying", duration: 10 },
-    { sprite: "stand-neutral", duration: 10 },
-  ],
   falling: [{ sprite: "stand-neutral", duration: 1 }],
-  jumping: [{ sprite: "stand-neutral", duration: 1 }],
-  landing: [{ sprite: "stand-neutral", duration: 8 }],
-  sitting: [{ sprite: "sit-edge-legs-down", duration: 1 }],
-  sittingLookUp: [{ sprite: "sit-edge-legs-down", duration: 1 }],
   sprawled: [{ sprite: "sprawl-lying", duration: 1 }],
-  climbingWall: [{ sprite: "stand-neutral", duration: 1 }],
-  climbingCeiling: [{ sprite: "stand-neutral", duration: 1 }],
   sittingEdge: [
     { sprite: "sit-edge-legs-down", duration: 20 },
     { sprite: "sit-edge-dangle-frame-1", duration: 15 },
@@ -89,12 +72,11 @@ export const ANIMATIONS_FULL: Record<string, AnimFrame[]> = {
   ],
   headSpin: [
     { sprite: "spin-head-frame-1", duration: 5 },
-    { sprite: "spin-head-frame-4", duration: 5 },
     { sprite: "spin-head-frame-2", duration: 5 },
-    { sprite: "spin-head-frame-5", duration: 5 },
     { sprite: "spin-head-frame-3", duration: 5 },
+    { sprite: "spin-head-frame-4", duration: 5 },
+    { sprite: "spin-head-frame-5", duration: 5 },
     { sprite: "spin-head-frame-6", duration: 5 },
-    { sprite: "stand-neutral", duration: 5 },
   ],
   sittingPc: [{ sprite: "sit-pc-edge-legs-down", duration: 10 }],
   sittingPcDangle: [
@@ -108,26 +90,7 @@ export function spriteUrl(key: string): string {
   return `${SPRITE_BASE}${file}`;
 }
 
-/** Native art: sparkle in viewer's right eye. Percent of the 384² sprite box. */
-const EYE_RIGHT = { x: "62%", y: "34%" };
-const EYE_LEFT = { x: "34%", y: "34%" };
-
-export function starEyeLayout(facingRight: boolean) {
-  if (facingRight) {
-    return {
-      overlay: false as const,
-      cover: false as const,
-      overlayPos: EYE_RIGHT,
-      coverPos: EYE_RIGHT,
-    };
-  }
-  return {
-    overlay: true as const,
-    cover: true as const,
-    overlayPos: EYE_LEFT,
-    coverPos: EYE_RIGHT,
-  };
-}
+export const PREFETCH_SPRITE_KEYS = Object.keys(SPRITES);
 
 export type ShimejiMascot = {
   x: number;
@@ -151,12 +114,7 @@ export type ShimejiMascot = {
   smoothedVelocityX: number;
   smoothedVelocityY: number;
   dragTick: number;
-  isResisting: boolean;
-  resistAnimTick: number;
   stateTimer: number;
-  climbSide: number;
-  climbSpeed: number;
-  jumpCooldown: number;
   spriteKey: string;
   transform: string;
   forceWorking: boolean;
@@ -185,11 +143,11 @@ export function createMascot(bounds: Bounds, scale: number): ShimejiMascot {
   const maxX = Math.max(0, bounds.width - size);
   return {
     x: Math.random() * maxX,
-    y: bounds.height,
+    y: bounds.height || size,
     velocityX: 0,
     velocityY: 0,
     state: State.IDLE,
-    facingRight: false,
+    facingRight: Math.random() > 0.5,
     direction: 0,
     currentAnimation: "idle",
     animationFrame: 0,
@@ -205,12 +163,7 @@ export function createMascot(bounds: Bounds, scale: number): ShimejiMascot {
     smoothedVelocityX: 0,
     smoothedVelocityY: 0,
     dragTick: 0,
-    isResisting: false,
-    resistAnimTick: 0,
     stateTimer: 0,
-    climbSide: 0,
-    climbSpeed: 1.5,
-    jumpCooldown: 0,
     spriteKey: "stand-neutral",
     transform: "none",
     forceWorking: false,
@@ -232,27 +185,6 @@ function currentFrame(m: ShimejiMascot): AnimFrame {
   return animation[m.animationFrame % animation.length] || animation[0];
 }
 
-function applyTransform(m: ShimejiMascot) {
-  // Keep cloak red|yellow. Star-eye is a separate overlay.
-  m.transform = "none";
-}
-
-function updateDragAnimation(m: ShimejiMascot) {
-  m.dragTick++;
-  const dragDelta = m.x - m.prevDragX;
-  const dragDeltaY = m.y - m.prevDragY;
-  m.prevDragX = m.x;
-  m.prevDragY = m.y;
-  const alpha = 0.2;
-  m.smoothedVelocityX = m.smoothedVelocityX * (1 - alpha) + dragDelta * alpha * 5;
-  m.smoothedVelocityY = m.smoothedVelocityY * (1 - alpha) + dragDeltaY * alpha * 5;
-  if (Math.abs(m.smoothedVelocityX) > 0.4) {
-    m.facingRight = m.smoothedVelocityX > 0;
-  }
-  m.spriteKey = "stand-neutral";
-  m.transform = "none";
-}
-
 function tickWorking(m: ShimejiMascot, perch: Perch | null, size: number) {
   m.velocityX = 0;
   m.velocityY = 0;
@@ -272,27 +204,15 @@ function tickWorking(m: ShimejiMascot, perch: Perch | null, size: number) {
   m.y = Math.max(m.y, size);
 }
 
-function turnAtWall(m: ShimejiMascot, goRight: boolean) {
-  m.direction = goRight ? 1 : -1;
-  m.facingRight = goRight;
-}
-
-function updateState(
-  m: ShimejiMascot,
-  bounds: Bounds,
-  scale: number,
-  cursorY: number | null,
-  perch: Perch | null,
-) {
+function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Perch | null) {
   const size = SPRITE_SIZE * scale;
   const groundY = bounds.height;
   const leftBound = 0;
   const rightBound = Math.max(0, bounds.width - size);
 
-  if (m.jumpCooldown > 0) m.jumpCooldown--;
-
   if (m.isDragging) {
-    updateDragAnimation(m);
+    m.spriteKey = "stand-neutral";
+    m.dragTick++;
     return;
   }
 
@@ -305,24 +225,15 @@ function updateState(
     case State.IDLE:
       m.stateTimer++;
       m.y = groundY;
-      if (m.stateTimer > 50 && Math.random() < 0.02) {
+      if (m.stateTimer > 40 && Math.random() < 0.03) {
         const roll = Math.random();
-        if (roll < 0.55) {
+        if (roll < 0.58) {
           setAnim(m, State.WALKING, "walking");
           m.direction = Math.random() > 0.5 ? 1 : -1;
           m.facingRight = m.direction > 0;
-        } else if (roll < 0.72) {
-          setAnim(m, State.SITTING, "sitting");
-        } else if (roll < 0.82) {
-          setAnim(m, State.CRAWLING, "crawling");
-          m.direction = Math.random() > 0.5 ? 1 : -1;
-          m.facingRight = m.direction > 0;
+        } else if (roll < 0.78) {
+          setAnim(m, State.SITTING_EDGE, "sittingEdge");
         } else if (roll < 0.9) {
-          setAnim(m, State.JUMPING, "jumping");
-          m.velocityY = -14;
-          m.velocityX = (Math.random() > 0.5 ? 1 : -1) * (1 + Math.random() * 2);
-          m.facingRight = m.velocityX > 0;
-        } else if (roll < 0.96) {
           setAnim(m, State.HEAD_SPIN, "headSpin");
         } else {
           setAnim(m, State.SPRAWLED, "sprawled");
@@ -330,44 +241,40 @@ function updateState(
       }
       break;
 
-    case State.CRAWLING:
-      m.stateTimer++;
-      m.x += PHYSICS.walkSpeed * 0.6 * m.direction;
-      m.y = groundY;
-      if (m.x <= leftBound) {
-        m.x = leftBound;
-        turnAtWall(m, true);
-      }
-      if (m.x >= rightBound) {
-        m.x = rightBound;
-        turnAtWall(m, false);
-      }
-      if (m.stateTimer > 60 && Math.random() < 0.02) setAnim(m, State.IDLE, "idle");
-      break;
-
     case State.WALKING:
       m.stateTimer++;
       m.x += PHYSICS.walkSpeed * m.direction;
+      m.y = groundY;
       if (m.x <= leftBound) {
         m.x = leftBound;
-        turnAtWall(m, true);
+        if (Math.random() < 0.35) {
+          setAnim(m, State.SITTING_EDGE, "sittingEdge");
+          m.facingRight = true;
+          break;
+        }
+        m.direction = 1;
+        m.facingRight = true;
       } else if (m.x >= rightBound) {
         m.x = rightBound;
-        turnAtWall(m, false);
+        if (Math.random() < 0.35) {
+          setAnim(m, State.SITTING_EDGE, "sittingEdge");
+          m.facingRight = false;
+          break;
+        }
+        m.direction = -1;
+        m.facingRight = false;
       }
-      if (m.stateTimer > 50 && Math.random() < 0.01) {
+      if (m.stateTimer > 50 && Math.random() < 0.012) {
         setAnim(m, State.IDLE, "idle");
         m.direction = 0;
       }
-      m.y = groundY;
       break;
 
-    case State.JUMPING:
+    case State.FALLING:
       m.velocityY += PHYSICS.gravity;
       m.velocityY = Math.min(m.velocityY, PHYSICS.fallTerminalVelocity);
       m.y += m.velocityY;
       m.x += m.velocityX;
-      if (m.velocityX !== 0) m.facingRight = m.velocityX > 0;
       if (m.x <= leftBound) {
         m.x = leftBound;
         m.velocityX = Math.abs(m.velocityX);
@@ -382,55 +289,26 @@ function updateState(
         m.y = groundY;
         m.velocityY = 0;
         m.velocityX = 0;
-        setAnim(m, State.LANDING, "landing");
+        setAnim(m, State.SPRAWLED, "sprawled");
       }
-      break;
-
-    case State.FALLING:
-      m.velocityY += PHYSICS.gravity;
-      m.velocityY = Math.min(m.velocityY, PHYSICS.fallTerminalVelocity);
-      m.y += m.velocityY;
-      if (m.y >= groundY) {
-        m.y = groundY;
-        m.velocityY = 0;
-        setAnim(m, State.LANDING, "landing");
-      }
-      break;
-
-    case State.LANDING:
-      m.stateTimer++;
-      m.y = groundY;
-      if (m.stateTimer >= animDuration("landing")) setAnim(m, State.IDLE, "idle");
-      break;
-
-    case State.SITTING:
-      m.stateTimer++;
-      m.y = groundY;
-      m.currentAnimation = "sitting";
-      if (m.stateTimer > 100 && Math.random() < 0.01) {
-        setAnim(m, State.HEAD_SPIN, "headSpin");
-        break;
-      }
-      if (m.stateTimer > 100 && Math.random() < 0.02) setAnim(m, State.IDLE, "idle");
       break;
 
     case State.SPRAWLED:
       m.stateTimer++;
       m.y = groundY;
-      if (m.stateTimer > 150 && Math.random() < 0.02) setAnim(m, State.IDLE, "idle");
+      if (m.stateTimer > 80 && Math.random() < 0.03) setAnim(m, State.IDLE, "idle");
       break;
 
     case State.HEAD_SPIN:
       m.stateTimer++;
       m.y = groundY;
-      if (m.stateTimer >= animDuration("headSpin")) setAnim(m, State.SITTING, "sitting");
+      if (m.stateTimer >= animDuration("headSpin")) setAnim(m, State.IDLE, "idle");
       break;
 
-    case State.CLIMBING_WALL:
-    case State.CLIMBING_CEILING:
     case State.SITTING_EDGE:
-      setAnim(m, State.FALLING, "falling");
-      m.velocityY = 0;
+      m.stateTimer++;
+      m.y = groundY;
+      if (m.stateTimer > 160 && Math.random() < 0.02) setAnim(m, State.IDLE, "idle");
       break;
 
     case State.SITTING_PC:
@@ -446,7 +324,10 @@ function updateState(
 }
 
 function updateAnimation(m: ShimejiMascot) {
-  if (m.isDragging) return;
+  if (m.isDragging) {
+    m.spriteKey = "stand-neutral";
+    return;
+  }
   if (!ANIMATIONS_FULL[m.currentAnimation]) {
     m.currentAnimation = "idle";
     m.animationTick = 0;
@@ -468,17 +349,17 @@ function updateAnimation(m: ShimejiMascot) {
     m.animationFrame = 0;
   }
   m.spriteKey = currentFrame(m).sprite;
-  applyTransform(m);
+  m.transform = "none";
 }
 
 export function tickShimeji(
   m: ShimejiMascot,
   bounds: Bounds,
   scale: number,
-  cursorY: number | null,
+  _cursorY: number | null,
   perch: Perch | null,
 ) {
-  updateState(m, bounds, scale, cursorY, perch);
+  updateState(m, bounds, scale, perch);
   updateAnimation(m);
 }
 
@@ -500,12 +381,16 @@ export function promoteDrag(m: ShimejiMascot) {
   m.smoothedVelocityX = 0;
   m.smoothedVelocityY = 0;
   m.dragTick = 0;
-  m.isResisting = false;
-  m.resistAnimTick = 0;
   m.forceWorking = false;
 }
 
-export function moveDrag(m: ShimejiMascot, clientX: number, clientY: number, bounds: Bounds, scale: number) {
+export function moveDrag(
+  m: ShimejiMascot,
+  clientX: number,
+  clientY: number,
+  bounds: Bounds,
+  scale: number,
+) {
   const size = SPRITE_SIZE * scale;
   if (m.dragPending) {
     const dx = clientX - m.dragStartX;
@@ -517,6 +402,13 @@ export function moveDrag(m: ShimejiMascot, clientX: number, clientY: number, bou
   m.y = clientY - m.dragOffsetY + size;
   m.x = Math.max(-size * 0.5, Math.min(m.x, bounds.width - size * 0.5));
   m.y = Math.max(size * 0.5, Math.min(m.y, bounds.height + size * 0.5));
+  const dragDelta = m.x - m.prevDragX;
+  const dragDeltaY = m.y - m.prevDragY;
+  m.prevDragX = m.x;
+  m.prevDragY = m.y;
+  m.smoothedVelocityX = m.smoothedVelocityX * 0.8 + dragDelta * 0.2 * 5;
+  m.smoothedVelocityY = m.smoothedVelocityY * 0.8 + dragDeltaY * 0.2 * 5;
+  if (Math.abs(dragDelta) > 0.4) m.facingRight = dragDelta > 0;
 }
 
 export function endDrag(m: ShimejiMascot) {

@@ -730,7 +730,7 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 }
 
 
-/* ── Shimeji overlay (Katho's sprites, not SVG) ── */
+/* ── Katho Mochi overlay (/sprites/mochi) ── */
 .companion-overlay {
   position: fixed;
   inset: 0;
@@ -747,8 +747,7 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
   background-repeat: no-repeat;
   background-position: center bottom;
   background-size: contain;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
 }
 
 .companion-mascot {
@@ -882,31 +881,12 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 .mobile-dock {
   z-index: 36;
 }
-/* Katho Mochi: don't pixelate her drawings; star-eye overlay (cloak stays unflipped) */
-.companion-mascot,
-.companion-working-sprite {
-  position: relative;
+
+.companion-mascot canvas,
+.companion-working-sprite canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
   image-rendering: auto;
-  overflow: visible;
-}
-
-.companion-star-cover {
-  position: absolute;
-  width: 12%;
-  height: 10%;
-  transform: translate(-50%, -50%);
-  background: #1158cc;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.companion-star-eye {
-  position: absolute;
-  width: 11%;
-  height: 11%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  background: #fff;
-  clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
-  filter: drop-shadow(0 0 1px #fff);
 }

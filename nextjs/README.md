@@ -7,7 +7,7 @@ Frontend Next.js para la experiencia AVAX/EVM de Mochi.
 - Landing y marketplace.
 - Conexión wallet con RainbowKit + wagmi + viem.
 - API routes para perfiles, feedback, suscripciones y utilidades del sitio.
-- Compañera en `/companion`: Mochi deambula con el set characters/mochi/ de Katho (capa rojo/amarillo, estrellita). Pomodoro, video, notas, DM entre Katho y Lulox, y dos personas-agente que pueden quedar trabajando en este navegador. Slice aparte.
+- Compañera en `/companion`: Mochi deambula la pieza con los sprites de Katho (/sprites/mochi/, el conejo blanco de capa roja/amarilla). Pomodoro, video, notas, DM entre Katho y Lulox, y dos personas-agente que pueden quedar trabajando en este navegador. Slice aparte.
 
 ## Variables principales
 
