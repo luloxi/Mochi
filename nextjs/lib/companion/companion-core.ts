@@ -407,7 +407,7 @@ export function localMochiReply(args: {
 
   if (intent.type === "message-person") {
     const dest = PEOPLE[intent.to].name;
-    return `Se lo dejo yo a ${dest}: “${intent.text}”. Queda en el chat de las dos.`;
+    return `Se lo dejo yo a ${dest}: “${intent.text}”. Queda en el chat de Katho y Lulox.`;
   }
 
   if (intent.type === "ask-agent") {
@@ -429,7 +429,7 @@ export function localMochiReply(args: {
 
   return seat
     ? `Te escucho. Si querés que le deje un recado a ${other}, decime “decile a ${other} que…”. Si querés el agente del sitio, pedímelo y lo pregunto yo.`
-    : "Te escucho. Elegí quién sos (Katho o Lulox) para el chat de las dos, y hablame de lo que sea.";
+    : "Te escucho. Elegí quién sos (Katho o Lulox) para el chat de los dos, y hablame de lo que sea.";
 }
 
 export const COMPANION_SOUL = `# soul.md
@@ -438,10 +438,10 @@ Sos Mochi, la compañera del medio.
 
 - Hablás en español rioplatense: vos, che, dale, tranqui. Nunca "tú".
 - Sos cálida, breve y concreta. No hagas discurso de producto.
-- El centro sos vos con la persona. Katho (kathonejo) y Lulox (luloxi) son las dos personas de esta pieza.
+- El centro sos vos con la persona. Katho (kathonejo) y Lulox (luloxi) son las personas de esta pieza.
 - Si te piden mandar un recado, lo mandás VOS. No le pidas a la persona que apriete un botón extra.
 - Si te piden preguntarle al agente del sitio, lo preguntás VOS y después contás la respuesta.
 - No inventes conexiones, bots, ni botones falsos. Si algo no está, decilo con honestidad.
-- No prometas servidores que no existen. El chat de las dos vive en este navegador.
-- Katho y Lulox son personas-agente. Si las dejan trabajando, siguen en esta pestaña del navegador, no en la nube.
+- No prometas servidores que no existen. El chat entre Katho y Lulox vive en este navegador.
+- Katho y Lulox son personas-agente. Si los dejan trabajando, siguen en esta pestaña del navegador, no en la nube.
 `;

@@ -68,7 +68,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-type MobileTab = "mochi" | "pomo" | "notas" | "video" | "nosotras";
+type MobileTab = "mochi" | "pomo" | "notas" | "video" | "dm";
 
 function DeskWindow({
   appId,
@@ -754,7 +754,7 @@ export function CompanionSurface() {
     <section className="companion-card">
       <h2>Agentes</h2>
       <p className="empty-note">
-        Katho y Lulox son personas-agente. Si las dejás trabajando, siguen en este navegador
+        Katho y Lulox son personas-agente. Si los dejás trabajando, siguen en este navegador
         aunque cambies de pestaña de esta pieza. No hay workers en la nube: si cerrás la
         pestaña del browser, se pausan.
       </p>
@@ -800,7 +800,7 @@ export function CompanionSurface() {
 
   const privatePanel = (
     <section className="companion-card companion-grow">
-      <h2>DM · nosotras dos</h2>
+      <h2>DM · Katho y Lulox</h2>
       <div className="seat-row">
         {(["katho", "lulox"] as PersonId[]).map((id) => (
           <button
@@ -1038,7 +1038,7 @@ export function CompanionSurface() {
               {mobileTab === "pomo" ? pomoPanel : null}
               {mobileTab === "notas" ? todosPanel : null}
               {mobileTab === "video" ? videoPanel : null}
-              {mobileTab === "nosotras" ? (
+              {mobileTab === "dm" ? (
                 <>
                   {agentsPanel}
                   {privatePanel}
@@ -1053,7 +1053,7 @@ export function CompanionSurface() {
                 ["pomo", "Pomo"],
                 ["notas", "Notas"],
                 ["video", "Video"],
-                ["nosotras", "Nosotras"],
+                ["dm", "Chat"],
               ] as Array<[MobileTab, string]>
             ).map(([id, label]) => (
               <button
