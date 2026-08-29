@@ -184,6 +184,14 @@ export async function readGoogleIdTokenEmail(
   }
 }
 
+/** Public GIS web client (Lumen). Origins must include the /companion share URL. */
+export const COMPANION_GOOGLE_CLIENT_ID =
+  "642702167525-avdsu91g38fhspaapmn9heiie72tpkh4.apps.googleusercontent.com";
+
 export function googleClientId(): string {
-  return (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "").trim();
+  return (
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    process.env.GOOGLE_CLIENT_ID ||
+    COMPANION_GOOGLE_CLIENT_ID
+  ).trim();
 }

@@ -20,7 +20,9 @@ export function CompanionLogin({
 }) {
   const btnRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+  const clientId =
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    "642702167525-avdsu91g38fhspaapmn9heiie72tpkh4.apps.googleusercontent.com";
 
   useEffect(() => {
     if (!clientId) return;

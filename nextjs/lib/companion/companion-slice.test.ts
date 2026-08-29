@@ -12,10 +12,12 @@ import {
   parseCompanionIntent,
 } from "./companion-core";
 import {
+  COMPANION_GOOGLE_CLIENT_ID,
   KATHO_GOOGLE_EMAIL,
   LULOX_GOOGLE_EMAIL,
   acceptGoogleSignIn,
   createCompanionSession,
+  googleClientId,
   persistSessionThroughReload,
   seatFromGoogleEmail,
 } from "./auth";
@@ -92,6 +94,11 @@ describe("google allowlist + session", () => {
     const result = acceptGoogleSignIn({ email: KATHO_GOOGLE_EMAIL, email_verified: false });
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.reason, "unverified");
+  });
+
+  it("ships a GIS web client id for the companion login", () => {
+    assert.match(COMPANION_GOOGLE_CLIENT_ID, /\.apps\.googleusercontent\.com$/);
+    assert.equal(googleClientId(), COMPANION_GOOGLE_CLIENT_ID);
   });
 });
 
@@ -299,5 +306,8 @@ describe("fullscreen companion surface", () => {
     assert.match(css, /html:has\(\[data-companion-surface\]\)/);
     assert.match(css, /overflow:\s*hidden/);
     assert.match(css, /100dvh/);
+    const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
+    assert.match(login, /accounts\.google\.com\/gsi\/client/);
+    assert.match(login, /642702167525-avdsu91g38fhspaapmn9heiie72tpkh4\.apps\.googleusercontent\.com/);
   });
 });
