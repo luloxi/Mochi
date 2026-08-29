@@ -7,6 +7,7 @@ Frontend Next.js para la experiencia AVAX/EVM de Mochi.
 - Landing y marketplace.
 - Conexión wallet con RainbowKit + wagmi + viem.
 - API routes para perfiles, feedback, suscripciones y utilidades del sitio.
+- Compañera en `/companion`: Mochi al centro, pomodoro, video, notas y un chat simple entre Katho y Lulox. Es un slice aparte; no reescribe marketplace ni el resto del sitio.
 
 ## Variables principales
 

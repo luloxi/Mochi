@@ -31,7 +31,7 @@ export type CompanionIntent =
   | { type: "message-person"; to: PersonId; text: string }
   | { type: "ask-agent"; text: string };
 
-const STORAGE = {
+export const COMPANION_STORAGE = {
   seat: "mochi-companion-seat-v1",
   petChat: "mochi-companion-pet-chat-v1",
   privateChat: "mochi-companion-private-chat-v1",
@@ -76,52 +76,52 @@ function writeJson(key: string, value: unknown) {
 }
 
 export function loadSeat(): PersonId | null {
-  const raw = readJson<string | null>(STORAGE.seat, null);
+  const raw = readJson<string | null>(COMPANION_STORAGE.seat, null);
   return raw === "katho" || raw === "lulox" ? raw : null;
 }
 
 export function saveSeat(seat: PersonId | null) {
   if (!seat) {
-    if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE.seat);
+    if (typeof window !== "undefined") window.localStorage.removeItem(COMPANION_STORAGE.seat);
     return;
   }
-  writeJson(STORAGE.seat, seat);
+  writeJson(COMPANION_STORAGE.seat, seat);
 }
 
 export function loadPetChat(): CompanionMsg[] {
-  const rows = readJson<CompanionMsg[]>(STORAGE.petChat, []);
+  const rows = readJson<CompanionMsg[]>(COMPANION_STORAGE.petChat, []);
   return Array.isArray(rows) ? rows.slice(-80) : [];
 }
 
 export function savePetChat(rows: CompanionMsg[]) {
-  writeJson(STORAGE.petChat, rows.slice(-80));
+  writeJson(COMPANION_STORAGE.petChat, rows.slice(-80));
 }
 
 export function loadPrivateChat(): PrivateMsg[] {
-  const rows = readJson<PrivateMsg[]>(STORAGE.privateChat, []);
+  const rows = readJson<PrivateMsg[]>(COMPANION_STORAGE.privateChat, []);
   return Array.isArray(rows) ? rows.slice(-120) : [];
 }
 
 export function savePrivateChat(rows: PrivateMsg[]) {
-  writeJson(STORAGE.privateChat, rows.slice(-120));
+  writeJson(COMPANION_STORAGE.privateChat, rows.slice(-120));
 }
 
 export function loadTodos(): TodoItem[] {
-  const rows = readJson<TodoItem[]>(STORAGE.todos, []);
+  const rows = readJson<TodoItem[]>(COMPANION_STORAGE.todos, []);
   return Array.isArray(rows) ? rows.slice(-60) : [];
 }
 
 export function saveTodos(rows: TodoItem[]) {
-  writeJson(STORAGE.todos, rows.slice(-60));
+  writeJson(COMPANION_STORAGE.todos, rows.slice(-60));
 }
 
 export function loadVideoUrl(): string {
-  const raw = readJson<string>(STORAGE.video, "");
+  const raw = readJson<string>(COMPANION_STORAGE.video, "");
   return typeof raw === "string" ? raw : "";
 }
 
 export function saveVideoUrl(url: string) {
-  writeJson(STORAGE.video, url);
+  writeJson(COMPANION_STORAGE.video, url);
 }
 
 export function otherPerson(seat: PersonId): PersonId {
@@ -168,6 +168,7 @@ export function parseCompanionIntent(raw: string): CompanionIntent {
     "a kath",
     "katho que",
     "kathonejo que",
+    "decile a ella",
   ]);
   const toLulox = includesAny(lower, [
     "a lulox",
@@ -175,15 +176,15 @@ export function parseCompanionIntent(raw: string): CompanionIntent {
     "a luciano",
     "lulox que",
     "luloxi que",
+    "decile a él",
+    "decile a el",
   ]);
   const wantsMessage = includesAny(lower, [
     "decile",
-    "decilele",
     "avisale",
     "avisále",
     "mandale",
     "mandále",
-    "escribile",
     "escribile",
     "dejale un recado",
     "pasale",
@@ -195,7 +196,7 @@ export function parseCompanionIntent(raw: string): CompanionIntent {
     const stripped = text
       .replace(/^(che[, ]+)?(porfa[, ]+)?/i, "")
       .replace(
-        /^(decile|avisale|avisále|mandale|mandále|escribile|escribile|pasale|contale)\s+(a\s+)?(kathonejo|katho|kath|luloxi|lulox|luciano)\s*(que\s+)?/i,
+        /^(decile|avisale|avisále|mandale|mandále|escribile|pasale|contale)\s+(a\s+)?(kathonejo|katho|kath|luloxi|lulox|luciano|ella|él|el)\s*(que\s+)?/i,
         "",
       )
       .trim();
@@ -214,11 +215,12 @@ export function parseCompanionIntent(raw: string): CompanionIntent {
       "usá ollama",
       "usa ollama",
       "al agente del sitio",
+      "preguntale a openrouter",
     ])
   ) {
     const stripped = text
       .replace(
-        /^(che[, ]+)?(porfa[, ]+)?(preguntale al agente|preguntale a la mochi del sitio|preguntale al modelo|usá el agente|usa el agente|usá openrouter|usa openrouter|usá ollama|usa ollama)\s*(que\s+)?/i,
+        /^(che[, ]+)?(porfa[, ]+)?(preguntale al agente|preguntale a la mochi del sitio|preguntale al modelo|preguntale a openrouter|usá el agente|usa el agente|usá openrouter|usa openrouter|usá ollama|usa ollama)\s*(que\s+)?/i,
         "",
       )
       .trim();
@@ -290,9 +292,7 @@ export function localMochiReply(args: {
       return `Pendiente:\n${open.map((t) => `• ${t.text}`).join("\n")}`;
     }
     if (intent.action === "done") {
-      return intent.text
-        ? `Taché “${intent.text}”. Bien ahí.`
-        : "Decime cuál tachamos y lo saco.";
+      return intent.text ? `Tâché “${intent.text}”. Bien ahí.` : "Decime cuál tachamos y lo saco.";
     }
     return `Anotado: ${intent.text}. Después si querés te lo recuerdo.`;
   }

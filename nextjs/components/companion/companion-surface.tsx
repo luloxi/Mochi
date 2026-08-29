@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -16,9 +15,11 @@ import {
   formatSiteMochiProviderError,
   sendBitteBrowserChat,
   sendOllamaBrowserChat,
+  sendOpenClawBrowserChat,
 } from "@/lib/site-mochi-browser-providers";
 import {
   COMPANION_SOUL,
+  COMPANION_STORAGE,
   PEOPLE,
   type CompanionIntent,
   type CompanionMsg,
@@ -147,6 +148,39 @@ function formatClock(totalSeconds: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function PomoRing({
+  seconds,
+  total,
+  mode,
+}: {
+  seconds: number;
+  total: number;
+  mode: "foco" | "descanso";
+}) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const progress = total > 0 ? Math.max(0, Math.min(1, seconds / total)) : 0;
+  return (
+    <div className="pomo-ring-wrap">
+      <svg className="pomo-ring" viewBox="0 0 120 120" aria-hidden>
+        <circle className="pomo-ring-bg" cx="60" cy="60" r={r} />
+        <circle
+          className="pomo-ring-fg"
+          cx="60"
+          cy="60"
+          r={r}
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - progress)}
+        />
+      </svg>
+      <div className="pomo-face">
+        <div className="pomo-label">{mode === "foco" ? "Foco" : "Descanso"}</div>
+        <div className="pomo-time">{formatClock(seconds)}</div>
+      </div>
+    </div>
+  );
+}
+
 function VideoFrame({ url }: { url: string }) {
   const yt = extractYouTubeId(url);
   if (yt) {
@@ -192,10 +226,12 @@ export function CompanionSurface() {
   const [mood, setMood] = useState<PetMood>("idle");
   const [mobileTab, setMobileTab] = useState<MobileTab>("mochi");
   const [pomoSeconds, setPomoSeconds] = useState(25 * 60);
+  const [pomoTotal, setPomoTotal] = useState(25 * 60);
   const [pomoRunning, setPomoRunning] = useState(false);
   const [pomoMode, setPomoMode] = useState<"foco" | "descanso">("foco");
   const hydrated = useRef(false);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const mobileLogRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setSeat(loadSeat());
@@ -206,6 +242,23 @@ export function CompanionSurface() {
     setVideoUrl(storedVideo);
     setVideoDraft(storedVideo);
     hydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key) return;
+      if (event.key === COMPANION_STORAGE.privateChat) setPrivateChat(loadPrivateChat());
+      if (event.key === COMPANION_STORAGE.todos) setTodos(loadTodos());
+      if (event.key === COMPANION_STORAGE.video) {
+        const next = loadVideoUrl();
+        setVideoUrl(next);
+        setVideoDraft(next);
+      }
+      if (event.key === COMPANION_STORAGE.petChat) setPetChat(loadPetChat());
+      if (event.key === COMPANION_STORAGE.seat) setSeat(loadSeat());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   useEffect(() => {
@@ -231,6 +284,7 @@ export function CompanionSurface() {
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+    mobileLogRef.current?.scrollTo({ top: mobileLogRef.current.scrollHeight, behavior: "smooth" });
   }, [petChat, sending]);
 
   useEffect(() => {
@@ -240,13 +294,19 @@ export function CompanionSurface() {
         if (prev > 1) return prev - 1;
         window.clearInterval(t);
         setPomoRunning(false);
-        setPomoMode((mode) => (mode === "foco" ? "descanso" : "foco"));
-        setMood(pomoMode === "foco" ? "sleepy" : "happy");
-        return pomoMode === "foco" ? 5 * 60 : 25 * 60;
+        setPomoMode((mode) => {
+          const next = mode === "foco" ? "descanso" : "foco";
+          const nextTotal = next === "foco" ? 25 * 60 : 5 * 60;
+          setPomoTotal(nextTotal);
+          setMood(mode === "foco" ? "sleepy" : "happy");
+          window.setTimeout(() => setPomoSeconds(nextTotal), 0);
+          return next;
+        });
+        return 0;
       });
     }, 1000);
     return () => window.clearInterval(t);
-  }, [pomoRunning, pomoMode]);
+  }, [pomoRunning]);
 
   useEffect(() => {
     if (pomoRunning && pomoMode === "foco") setMood("listening");
@@ -267,15 +327,20 @@ export function CompanionSurface() {
         else if (intent.action === "reset") {
           setPomoRunning(false);
           setPomoMode("foco");
+          setPomoTotal(25 * 60);
           setPomoSeconds(25 * 60);
         } else if (intent.action === "skip") {
           const next = pomoMode === "foco" ? "descanso" : "foco";
+          const total = next === "foco" ? 25 * 60 : 5 * 60;
           setPomoMode(next);
-          setPomoSeconds(next === "foco" ? 25 * 60 : 5 * 60);
+          setPomoTotal(total);
+          setPomoSeconds(total);
           setPomoRunning(true);
         } else {
+          const total = (intent.minutes || 25) * 60;
           setPomoMode("foco");
-          setPomoSeconds((intent.minutes || 25) * 60);
+          setPomoTotal(total);
+          setPomoSeconds(total);
           setPomoRunning(true);
         }
       }
@@ -318,7 +383,7 @@ export function CompanionSurface() {
   const askSiteAgent = useCallback(
     async (message: string, history: CompanionMsg[]) => {
       const chatHistory = history
-        .filter((row) => !row.content.startsWith("..."))
+        .filter((row) => !row.content.startsWith("…"))
         .slice(-10)
         .map((row) => ({
           role: row.role === "user" ? ("user" as const) : ("assistant" as const),
@@ -346,6 +411,14 @@ export function CompanionSurface() {
           bitteAgentId: config.bitteAgentId,
         });
       }
+      if (config.provider === "openclaw") {
+        return sendOpenClawBrowserChat({
+          messages: payloadMessages,
+          gatewayUrl: config.openclawGatewayUrl,
+          gatewayToken: config.openclawPairedSessionToken || config.openclawGatewayToken,
+          agentName: config.openclawPairedAgentName || config.openclawAgentName,
+        });
+      }
       if (!canUseCurrentProvider) {
         throw new Error(config.provider === "site" ? "NO_CREDITS" : "OPENROUTER_DETAIL:Falta la API key");
       }
@@ -366,6 +439,12 @@ export function CompanionSurface() {
     },
     [canUseCurrentProvider, config, incrementFreeSiteMessagesUsed],
   );
+
+  const canTalkToConfiguredAgent =
+    canUseCurrentProvider ||
+    config.provider === "ollama" ||
+    config.provider === "bitte" ||
+    config.provider === "openclaw";
 
   async function handleTalk(text: string) {
     const message = text.trim();
@@ -408,7 +487,7 @@ export function CompanionSurface() {
         return;
       }
 
-      if (canUseCurrentProvider || config.provider === "ollama" || config.provider === "bitte") {
+      if (canTalkToConfiguredAgent) {
         setMood("thinking");
         try {
           const reply = await askSiteAgent(message, nextHistory);
@@ -449,32 +528,38 @@ export function CompanionSurface() {
     setPrivateDraft("");
   }
 
-  const lastMochi = useMemo(
-    () => [...petChat].reverse().find((row) => row.role === "mochi")?.content,
-    [petChat],
-  );
-
   const pomoPanel = (
     <section className="companion-card">
       <h2>Pomodoro</h2>
-      <div className="pomo-ring-wrap">
-        <div className="pomo-label">{pomoMode === "foco" ? "Foco" : "Descanso"}</div>
-        <div className="pomo-time">{formatClock(pomoSeconds)}</div>
-        <div className="pomo-actions">
-          <button type="button" onClick={() => setPomoRunning((v) => !v)}>
-            {pomoRunning ? "Pausar" : "Arrancar"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPomoRunning(false);
-              setPomoMode("foco");
-              setPomoSeconds(25 * 60);
-            }}
-          >
-            Reiniciar
-          </button>
-        </div>
+      <PomoRing seconds={pomoSeconds} total={pomoTotal} mode={pomoMode} />
+      <div className="pomo-actions">
+        <button type="button" onClick={() => setPomoRunning((v) => !v)}>
+          {pomoRunning ? "Pausar" : "Arrancar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setPomoRunning(false);
+            setPomoMode("foco");
+            setPomoTotal(25 * 60);
+            setPomoSeconds(25 * 60);
+          }}
+        >
+          Reiniciar
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const next = pomoMode === "foco" ? "descanso" : "foco";
+            const total = next === "foco" ? 25 * 60 : 5 * 60;
+            setPomoMode(next);
+            setPomoTotal(total);
+            setPomoSeconds(total);
+            setPomoRunning(true);
+          }}
+        >
+          Saltar
+        </button>
       </div>
     </section>
   );
@@ -608,6 +693,7 @@ export function CompanionSurface() {
         }}
         placeholder="Hablale a ella…"
         rows={2}
+        aria-label="Mensaje para Mochi"
       />
       <button type="submit" disabled={sending || !composer.trim()}>
         {sending ? "…" : "Decile"}
@@ -616,7 +702,7 @@ export function CompanionSurface() {
   );
 
   const speech = (
-    <div className="speech-stack" ref={logRef}>
+    <div className="speech-stack" ref={logRef} aria-live="polite">
       {petChat.length === 0 ? (
         <div className="speech-bubble mochi">
           Hola. Soy Mochi. Hablame, che. Si querés que le deje un recado a Katho o a Lulox, lo
@@ -669,25 +755,22 @@ export function CompanionSurface() {
           {mobileTab === "mochi" ? (
             <div className="mobile-mochi">
               <CompanionPet mood={mood} size="mobile" />
-              {lastMochi ? (
-                <div className="speech-bubble mochi" style={{ margin: "8px auto", width: "100%" }}>
-                  {lastMochi}
-                </div>
-              ) : (
-                <div className="speech-bubble mochi" style={{ margin: "8px auto", width: "100%" }}>
-                  Acá abajo me hablás. El resto de las cosas vive en las pestañas, no en un escritorio
-                  achicado.
-                </div>
-              )}
-              <div className="mobile-log">
-                {petChat.slice(-20).map((row) => (
-                  <div
-                    key={row.id}
-                    className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}
-                  >
-                    {row.content}
+              <div className="mobile-log" ref={mobileLogRef} aria-live="polite">
+                {petChat.length === 0 ? (
+                  <div className="speech-bubble mochi">
+                    Acá abajo me hablás. El resto de las cosas vive en las pestañas, no en un
+                    escritorio achicado.
                   </div>
-                ))}
+                ) : (
+                  petChat.slice(-20).map((row) => (
+                    <div
+                      key={row.id}
+                      className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}
+                    >
+                      {row.content}
+                    </div>
+                  ))
+                )}
               </div>
               {composerForm}
             </div>
