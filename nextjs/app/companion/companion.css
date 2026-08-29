@@ -762,7 +762,7 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 
 .companion-mascot {
   position: absolute;
-  z-index: 29;
+  z-index: 38;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
@@ -1207,4 +1207,205 @@ html:has([data-companion-surface]) [class*="site-mochi-mascot"] {
 
 .connect-note a {
   color: inherit;
+}
+
+.companion-logout {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 40;
+  border-radius: 999px;
+  border: 1px solid var(--c-line);
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.companion-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding: 24px;
+}
+
+.companion-login-card {
+  width: min(420px, 100%);
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: 22px;
+  padding: 22px 20px;
+  box-shadow: 0 18px 40px rgba(42, 16, 40, 0.22);
+}
+
+.companion-login-hi {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.companion-login-error {
+  color: #8a2a4a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.companion-google-btn {
+  margin-top: 12px;
+  min-height: 44px;
+}
+
+.desk-talk.chat-mochi {
+  left: 4%;
+  top: 10%;
+  transform: none;
+  border-color: #ff8fcf;
+}
+
+.desk-talk.chat-lulox {
+  left: auto;
+  right: 4%;
+  top: 12%;
+  transform: none;
+  border-color: #7ad7ff;
+}
+
+.desk-talk.chat-app-agent {
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  border-color: #c9b37a;
+}
+
+.desk-talk.chat-mochi .desk-window-chrome { background: #c45b86; }
+.desk-talk.chat-lulox .desk-window-chrome { background: #2a6a88; }
+.desk-talk.chat-app-agent .desk-window-chrome { background: #6b675c; }
+
+@keyframes mascot-hop {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -16px; }
+}
+
+.companion-mascot.is-hop {
+  animation: mascot-hop 0.55s ease-in-out infinite;
+}
+
+.companion-mascot.is-kiss {
+  filter: saturate(1.08);
+}
+
+.companion-mascot.is-apart {
+  opacity: 0.92;
+}
+
+.mascot-idle-chat {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translate(-50%, -4px);
+  background: #fff8fc;
+  color: #2a1a33;
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.board-legend {
+  font-size: 11px;
+  line-height: 1.35;
+  margin: 0 0 8px;
+  color: #7a4a6a;
+  font-weight: 700;
+}
+
+.boards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.board-card {
+  border: 1px solid var(--c-line);
+  border-radius: 14px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.board-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.board-column {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.board-col-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-bottom: 6px;
+}
+
+.board-feel {
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #1a1218;
+}
+
+.board-feel-red { background: #e85d4c; color: #fff8fc; }
+.board-feel-orange { background: #f4a24c; }
+.board-feel-yellow { background: #f2d35b; }
+.board-feel-green { background: #6fbf73; color: #fff8fc; }
+.board-feel-blue { background: #4c8ddb; color: #fff8fc; }
+.board-feel-purple { background: #8a5cc8; color: #fff8fc; }
+
+.desk-win-boards { left: 56px; top: 64px; width: min(520px, 70vw); }
+
+.mobile-chat-switch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.mobile-chat-switch button {
+  flex: 1;
+  border-radius: 999px;
+  border: 2px solid var(--c-line);
+  background: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.mobile-chat-switch button.is-on {
+  background: #2a1a33;
+  color: #fff8fc;
+}
+
+.mobile-dock {
+  grid-template-columns: repeat(6, 1fr);
 }

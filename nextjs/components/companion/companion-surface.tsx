@@ -5,11 +5,11 @@ import {
   useEffect,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { CompanionWanderer, CompanionWorkingSprite } from "@/components/companion/companion-pet";
+import { CompanionPair, CompanionWorkingSprite } from "@/components/companion/companion-pet";
+import { CompanionLogin } from "@/components/companion/companion-login";
 import {
   COMPANION_SOUL,
   COMPANION_STORAGE,
@@ -27,9 +27,6 @@ import {
   formatWorkClock,
   loadAgents,
   loadOpenApps,
-  loadPetChat,
-  loadPrivateChat,
-  loadSeat,
   loadTodos,
   loadVideoUrl,
   localAgentReply,
@@ -40,17 +37,35 @@ import {
   pickLuloxMood,
   saveAgents,
   saveOpenApps,
-  savePetChat,
-  savePrivateChat,
-  saveSeat,
   saveTodos,
   saveVideoUrl,
-  simulateIncomingDm,
   startCompanionRuntime,
   toggleAgentWorking,
   uid,
   nowIso,
 } from "@/lib/companion/companion-core";
+import {
+  type CompanionAuthSession,
+} from "@/lib/companion/auth";
+import { CHAT_WINDOWS, parseAppAgentIntent, type ChatWindowId } from "@/lib/companion/chats";
+import {
+  FEEL_COLOR_IDS,
+  addBoard,
+  addCard,
+  addColumn,
+  applyBoardAction,
+  boardLegendLine,
+  sampleSuenosBoard,
+  type Board,
+  type FeelColor,
+} from "@/lib/companion/boards";
+import {
+  DEFAULT_TOGETHER_CHANCE,
+  DEFAULT_TOGETHER_COOLDOWN_MS,
+  nextTogetherTick,
+  type PresenceStatus,
+  type PresenceView,
+} from "@/lib/companion/presence";
 import {
   GROK_CONSOLE_KEYS,
   buildGrokChatRequest,
@@ -89,7 +104,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-type MobileTab = "mochi" | "pomo" | "notas" | "video" | "dm";
+type MobileTab = "mochi" | "pomo" | "notas" | "video" | "dm" | "boards";
 
 function DeskWindow({
   appId,
@@ -280,10 +295,36 @@ function VideoFrame({ clip }: { clip: YtClip | null }) {
   );
 }
 
+const EMPTY_CHATS: Record<ChatWindowId, CompanionMsg[]> = {
+  mochi: [],
+  lulox: [],
+  "app-agent": [],
+};
+
 export function CompanionSurface() {
   const isMobile = useIsMobile();
-  const [seat, setSeat] = useState<PersonId | null>(null);
-  const [petChat, setPetChat] = useState<CompanionMsg[]>([]);
+  const [auth, setAuth] = useState<CompanionAuthSession | null | undefined>(undefined);
+  const seat = auth?.personId ?? null;
+  const [chats, setChats] = useState<Record<ChatWindowId, CompanionMsg[]>>(EMPTY_CHATS);
+  const [openChats, setOpenChats] = useState<ChatWindowId[]>([]);
+  const [activeChat, setActiveChat] = useState<ChatWindowId>("mochi");
+  const [boards, setBoards] = useState<Board[]>([sampleSuenosBoard()]);
+  const [boardDraft, setBoardDraft] = useState("");
+  const [columnDraft, setColumnDraft] = useState("");
+  const [cardDraft, setCardDraft] = useState("");
+  const [cardColor, setCardColor] = useState<FeelColor>("yellow");
+  const [pairPresence, setPairPresence] = useState<{ katho: PresenceStatus; lulox: PresenceStatus }>({
+    katho: "close",
+    lulox: "close",
+  });
+  const [togetherView, setTogetherView] = useState<PresenceView>({
+    pair: "both-away",
+    mode: "separate",
+    action: "separate",
+    lastTogetherAt: null,
+    left: "both",
+  });
+  const lastTogetherAt = useRef<number | null>(null);
   const [privateChat, setPrivateChat] = useState<PrivateMsg[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [videoUrl, setVideoUrl] = useState("");
@@ -302,15 +343,12 @@ export function CompanionSurface() {
     { id: "katho", working: false, label: "", startedAt: null, ticks: 0 },
     { id: "lulox", working: false, label: "", startedAt: null, ticks: 0 },
   ]);
-  const [perch, setPerch] = useState<{ x: number; y: number } | null>(null);
   const [agentLabelDraft, setAgentLabelDraft] = useState("");
   const [agentAskDraft, setAgentAskDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<MobileTab>("mochi");
-  const [talkOpen, setTalkOpen] = useState(false);
-  const [talkWith, setTalkWith] = useState<"mochi" | "lulox">("mochi");
   const [openApps, setOpenApps] = useState<DeskAppId[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [focusApp, setFocusApp] = useState<DeskAppId | "talk" | null>(null);
+  const [focusApp, setFocusApp] = useState<DeskAppId | ChatWindowId | null>(null);
   const [pomoSeconds, setPomoSeconds] = useState(25 * 60);
   const [pomoTotal, setPomoTotal] = useState(25 * 60);
   const [pomoRunning, setPomoRunning] = useState(false);
@@ -329,12 +367,19 @@ export function CompanionSurface() {
   const kathoWorking = agents.some((row) => row.id === "katho" && row.working);
   const luloxWorking = agents.some((row) => row.id === "lulox" && row.working);
 
+  const petChat = chats[activeChat] || [];
+
   useEffect(() => {
-    setSeat(loadSeat());
-    setPetChat(loadPetChat());
-    const priv = loadPrivateChat();
-    setPrivateChat(priv);
-    seenDmRef.current = priv.length ? priv[priv.length - 1].id : null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/companion/auth/session", { credentials: "include" });
+        const json = await res.json().catch(() => null);
+        if (!cancelled) setAuth(json?.session ?? null);
+      } catch {
+        if (!cancelled) setAuth(null);
+      }
+    })();
     setTodos(loadTodos());
     setAgents(loadAgents());
     setOpenApps(loadOpenApps());
@@ -347,20 +392,20 @@ export function CompanionSurface() {
     setGrok(session);
     startCompanionRuntime();
     hydrated.current = true;
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (!event.key) return;
-      if (event.key === COMPANION_STORAGE.privateChat) setPrivateChat(loadPrivateChat());
       if (event.key === COMPANION_STORAGE.todos) setTodos(loadTodos());
       if (event.key === COMPANION_STORAGE.video) {
         const next = loadVideoUrl();
         setVideoUrl(next);
         setVideoDraft(next);
       }
-      if (event.key === COMPANION_STORAGE.petChat) setPetChat(loadPetChat());
-      if (event.key === COMPANION_STORAGE.seat) setSeat(loadSeat());
       if (event.key === COMPANION_STORAGE.agents) setAgents(loadAgents());
       if (event.key === COMPANION_STORAGE.openApps) setOpenApps(loadOpenApps());
     };
@@ -374,18 +419,6 @@ export function CompanionSurface() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated.current) return;
-    saveSeat(seat);
-  }, [seat]);
-  useEffect(() => {
-    if (!hydrated.current) return;
-    savePetChat(petChat);
-  }, [petChat]);
-  useEffect(() => {
-    if (!hydrated.current) return;
-    savePrivateChat(privateChat);
-  }, [privateChat]);
   useEffect(() => {
     if (!hydrated.current) return;
     saveTodos(todos);
@@ -429,24 +462,82 @@ export function CompanionSurface() {
   }, [openApps]);
 
   useEffect(() => {
-    if (!mochiWorking || isMobile || !talkOpen) {
-      setPerch(null);
-      return;
-    }
-    const el = document.querySelector(".desk-talk");
-    if (!(el instanceof HTMLElement)) {
-      setPerch(null);
-      return;
-    }
-    const r = el.getBoundingClientRect();
-    const size = 128 * 0.72;
-    setPerch({ x: r.left + r.width * 0.58 - size / 2, y: r.top + 28 });
-  }, [mochiWorking, isMobile, talkOpen]);
+    if (!auth) return;
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const res = await fetch("/api/companion/sync", { credentials: "include" });
+        const json = await res.json().catch(() => null);
+        if (cancelled || !json) return;
+        if (Array.isArray(json.dms)) setPrivateChat(json.dms);
+        if (json.presence) setPairPresence(json.presence);
+        if (Array.isArray(json.boards) && json.boards.length) setBoards(json.boards);
+      } catch {
+        // keep last snapshot
+      }
+    };
+    void pull();
+    const id = window.setInterval(() => void pull(), 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [auth]);
+
+  useEffect(() => {
+    if (!auth) return;
+    const beat = (status: PresenceStatus) => {
+      void fetch("/api/companion/sync", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "presence", status }),
+      })
+        .then((res) => res.json())
+        .then((json) => {
+          if (json?.presence) setPairPresence(json.presence);
+        })
+        .catch(() => {});
+    };
+    beat("present");
+    const id = window.setInterval(() => {
+      beat(document.visibilityState === "visible" ? "present" : "idle-away");
+    }, 8000);
+    const onVis = () => beat(document.visibilityState === "visible" ? "present" : "idle-away");
+    const onLeave = () => beat("close");
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", onLeave);
+    return () => {
+      beat("close");
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", onLeave);
+    };
+  }, [auth]);
+
+  useEffect(() => {
+    const tick = () => {
+      const view = nextTogetherTick({
+        katho: pairPresence.katho,
+        lulox: pairPresence.lulox,
+        now: Date.now(),
+        lastTogetherAt: lastTogetherAt.current,
+        rng: Math.random,
+        cooldownMs: DEFAULT_TOGETHER_COOLDOWN_MS,
+        chance: DEFAULT_TOGETHER_CHANCE,
+      });
+      lastTogetherAt.current = view.lastTogetherAt;
+      setTogetherView(view);
+    };
+    tick();
+    const id = window.setInterval(tick, 4000);
+    return () => window.clearInterval(id);
+  }, [pairPresence]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
     mobileLogRef.current?.scrollTo({ top: mobileLogRef.current.scrollHeight, behavior: "smooth" });
-  }, [petChat, sending]);
+  }, [chats, sending, activeChat]);
 
   useEffect(() => {
     if (!pomoRunning) return;
@@ -474,12 +565,15 @@ export function CompanionSurface() {
     if (pomoRunning && pomoMode === "descanso") setMood("sleepy");
   }, [pomoRunning, pomoMode]);
 
-  const pushMochi = useCallback((content: string) => {
-    setPetChat((prev) => [
+  const pushMochi = useCallback((content: string, chatId: ChatWindowId = activeChat) => {
+    setChats((prev) => ({
       ...prev,
-      { id: uid("mochi"), role: "mochi", content, createdAt: nowIso() },
-    ]);
-  }, []);
+      [chatId]: [
+        ...prev[chatId],
+        { id: uid("mochi"), role: "mochi", content, createdAt: nowIso() },
+      ],
+    }));
+  }, [activeChat]);
 
   const applyIntent = useCallback(
     (intent: CompanionIntent) => {
@@ -523,18 +617,40 @@ export function CompanionSurface() {
       if (intent.type === "video") {
         setVideoUrl(intent.url);
         setVideoDraft(intent.url);
+        setOpenApps((prev) => (prev.includes("video") ? prev : [...prev, "video"]));
+      }
+      if (intent.type === "pomodoro") {
+        setOpenApps((prev) => (prev.includes("pomo") ? prev : [...prev, "pomo"]));
+      }
+      if (intent.type === "board") {
+        setBoards((prev) => {
+          const next = applyBoardAction(prev, intent);
+          void fetch("/api/companion/sync", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "boards", boards: next }),
+          }).catch(() => {});
+          return next;
+        });
+        setOpenApps((prev) => (prev.includes("boards") ? prev : [...prev, "boards"]));
       }
       if (intent.type === "message-person") {
         const fromName = seat ? PEOPLE[seat].name : "alguien";
-        setPrivateChat((prev) => [
-          ...prev,
-          {
-            id: uid("priv"),
-            from: "mochi",
+        void fetch("/api/companion/sync", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "dm",
             content: `${PEOPLE[intent.to].name}, ${fromName} me pidió que te diga: ${intent.text}`,
-            createdAt: nowIso(),
-          },
-        ]);
+          }),
+        })
+          .then((res) => res.json())
+          .then((json) => {
+            if (Array.isArray(json?.dms)) setPrivateChat(json.dms);
+          })
+          .catch(() => {});
         setMood("delivering");
       }
     },
@@ -582,22 +698,23 @@ export function CompanionSurface() {
     }
   }
 
-  async function handleTalk(text: string) {
+  async function handleTalk(text: string, chatId: ChatWindowId = activeChat) {
     const message = text.trim();
     if (!message || sending) return;
     setComposer("");
+    setActiveChat(chatId);
     const userMsg: CompanionMsg = {
       id: uid("user"),
       role: "user",
       content: message,
       createdAt: nowIso(),
     };
-    const nextHistory = [...petChat, userMsg];
-    setPetChat(nextHistory);
+    const nextHistory = [...(chats[chatId] || []), userMsg];
+    setChats((prev) => ({ ...prev, [chatId]: nextHistory }));
     setSending(true);
     setMood("listening");
 
-    const intent = parseCompanionIntent(message);
+    const intent = chatId === "app-agent" ? parseAppAgentIntent(message) : parseCompanionIntent(message);
     applyIntent(intent);
 
     try {
@@ -620,7 +737,7 @@ export function CompanionSurface() {
           }
         }
         if (intent.to === "lulox") setLuloxMood(pickLuloxMood(intent.text + " " + reply));
-        pushMochi(`El agente de ${persona.name} me dijo:\n${reply}`);
+        pushMochi(`El agente de ${persona.name} me dijo:\n${reply}`, chatId);
         setMood("happy");
         return;
       }
@@ -636,39 +753,39 @@ export function CompanionSurface() {
               history: nextHistory,
               characterLabel: "Mochi",
             });
-            pushMochi(agentReply);
+            pushMochi(agentReply, chatId);
             setMood("happy");
             return;
           } catch {
-            pushMochi("Grok no contestó ahora. Te hablo yo, sin inventar un botón.");
+            pushMochi("Grok no contestó ahora. Te hablo yo, sin inventar un botón.", chatId);
             setMood("idle");
             return;
           }
         }
-        pushMochi("Para eso hace falta Conectar Grok. El botón de abajo es el flujo de verdad, en accounts.x.ai.");
+        pushMochi("Para eso hace falta Conectar Grok. El botón de abajo es el flujo de verdad, en accounts.x.ai.", chatId);
         setMood("idle");
         return;
       }
 
       if (intent.type !== "chat") {
-        pushMochi(localMochiReply({ intent, userText: message, seat, todos }));
+        pushMochi(localMochiReply({ intent, userText: message, seat, todos }), chatId);
         setMood(intent.type === "pomodoro" ? "listening" : "happy");
         return;
       }
 
       if (grokOn && grok.apiKey) {
         setMood("thinking");
-        const persona = talkWith === "lulox" ? PERSONAS.lulox : PERSONAS.katho;
+        const persona = chatId === "lulox" ? PERSONAS.lulox : PERSONAS.katho;
         try {
           const reply = await askGrok({
             apiKey: grok.apiKey,
-            soul: talkWith === "lulox" ? persona.soul : COMPANION_SOUL,
+            soul: chatId === "lulox" ? persona.soul : chatId === "app-agent" ? COMPANION_SOUL : PERSONAS.katho.soul,
             message,
             history: nextHistory,
-            characterLabel: talkWith === "lulox" ? "Lulox" : "Mochi",
+            characterLabel: chatId === "lulox" ? "Lulox" : chatId === "app-agent" ? "App" : "Mochi",
           });
-          if (talkWith === "lulox") setLuloxMood(pickLuloxMood(message + " " + reply));
-          pushMochi(reply || localMochiReply({ intent, userText: message, seat, todos }));
+          if (chatId === "lulox") setLuloxMood(pickLuloxMood(message + " " + reply));
+          pushMochi(reply || localMochiReply({ intent, userText: message, seat, todos }), chatId);
           setMood("happy");
           return;
         } catch {
@@ -676,22 +793,23 @@ export function CompanionSurface() {
         }
       }
 
-      if (talkWith === "lulox") {
+      if (chatId === "lulox") {
         const reply = localAgentReply({ person: "lulox", userText: message, working: luloxWorking });
         setLuloxMood(pickLuloxMood(message + " " + reply));
-        pushMochi(reply);
+        pushMochi(reply, chatId);
+      } else if (chatId === "app-agent") {
+        pushMochi(
+          localMochiReply({ intent, userText: message, seat, todos }) ||
+            "Soy la app. Pedime un pomodoro, un YouTube o un tablero.",
+          chatId,
+        );
       } else {
-        pushMochi(localMochiReply({ intent, userText: message, seat, todos }));
+        pushMochi(localMochiReply({ intent, userText: message, seat, todos }), chatId);
       }
       setMood("idle");
     } finally {
       setSending(false);
     }
-  }
-
-  function onComposer(event: FormEvent) {
-    event.preventDefault();
-    void handleTalk(composer);
   }
 
   function addTodo() {
@@ -704,11 +822,43 @@ export function CompanionSurface() {
   function sendPrivate() {
     const text = privateDraft.trim();
     if (!text || !seat) return;
-    setPrivateChat((prev) => [
-      ...prev,
-      { id: uid("priv"), from: seat, content: text, createdAt: nowIso() },
-    ]);
     setPrivateDraft("");
+    void fetch("/api/companion/sync", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "dm", content: text }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (Array.isArray(json?.dms)) setPrivateChat(json.dms);
+      })
+      .catch(() => {});
+  }
+
+  async function logout() {
+    try {
+      await fetch("/api/companion/sync", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "presence", status: "logout" }),
+      });
+    } catch {
+      // still leave
+    }
+    await fetch("/api/companion/auth/logout", { method: "POST", credentials: "include" });
+    setAuth(null);
+  }
+
+  function persistBoards(next: Board[]) {
+    setBoards(next);
+    void fetch("/api/companion/sync", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "boards", boards: next }),
+    }).catch(() => {});
   }
 
   function leaveWorking(id: PersonId) {
@@ -734,11 +884,16 @@ export function CompanionSurface() {
     setFocusApp((cur) => (cur === id ? null : cur));
   }
 
-  function openTalk(who: "mochi" | "lulox" = "mochi") {
-    setTalkWith(who);
-    setTalkOpen(true);
-    setFocusApp("talk");
+  function openTalk(who: ChatWindowId = "mochi") {
+    setActiveChat(who);
+    setOpenChats((prev) => (prev.includes(who) ? prev : [...prev, who]));
+    setFocusApp(who);
     if (isMobile) setMobileTab("mochi");
+  }
+
+  function closeTalk(who: ChatWindowId) {
+    setOpenChats((prev) => prev.filter((id) => id !== who));
+    setFocusApp((cur) => (cur === who ? null : cur));
   }
 
   function applyGrokKey() {
@@ -765,15 +920,20 @@ export function CompanionSurface() {
       working: agents.some((row) => row.id === to && row.working),
     });
     if (to === "lulox") setLuloxMood(pickLuloxMood(text + " " + reply));
-    setPrivateChat((prev) => [
-      ...prev,
-      {
-        id: uid("priv"),
-        from: "mochi",
+    void fetch("/api/companion/sync", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "dm",
         content: `El agente de ${PEOPLE[from].name} le preguntó al agente de ${PEOPLE[to].name}: ${text}\n— ${reply}`,
-        createdAt: nowIso(),
-      },
-    ]);
+      }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (Array.isArray(json?.dms)) setPrivateChat(json.dms);
+      })
+      .catch(() => {});
     setAgentAskDraft("");
   }
 
@@ -1033,24 +1193,13 @@ export function CompanionSurface() {
   const privatePanel = (
     <section className="companion-card companion-grow">
       <h2>DM · Katho y Lulox</h2>
-      <div className="seat-row">
-        {(["katho", "lulox"] as PersonId[]).map((id) => (
-          <button
-            key={id}
-            type="button"
-            className={`seat-btn${seat === id ? " is-on" : ""}`}
-            onClick={() => setSeat(id)}
-          >
-            Soy {PEOPLE[id].name}
-          </button>
-        ))}
-      </div>
+      <p className="empty-note">
+        {auth
+          ? `Escribís como ${auth.name} (${auth.pronoun}). Llega al otro celu.`
+          : "Entrá con Google para el chat de los dos."}
+      </p>
       {privateChat.length === 0 ? (
-        <p className="empty-note">
-          Un solo chat, entre Katho y Lulox. Vive en este navegador: no hay servidor ni GitHub
-          OAuth todavía, para no pedirte infra nueva. Si están en la misma compu se ven. Si no,
-          pedime a mí: “decile a {seat ? PEOPLE[otherPerson(seat)].name : "Katho"} que…”.
-        </p>
+        <p className="empty-note">Todavía no hay mensajes. Cuando el otro escriba, Mochi avisa.</p>
       ) : (
         <div className="private-log">
           {privateChat.map((row) => (
@@ -1068,68 +1217,164 @@ export function CompanionSurface() {
           onKeyDown={(event) => {
             if (event.key === "Enter") sendPrivate();
           }}
-          placeholder={seat ? `Escribir como ${PEOPLE[seat].name}` : "Elegí quién sos"}
+          placeholder={seat ? `Escribir como ${PEOPLE[seat].name}` : "Entrá con Google"}
           disabled={!seat}
         />
         <button type="button" className="ghost-btn" onClick={sendPrivate} disabled={!seat}>
           Enviar
         </button>
       </div>
-      <button
-        type="button"
-        className="ghost-btn"
-        onClick={() => {
-          if (!seat) return;
-          const from = otherPerson(seat);
-          setPrivateChat((prev) => [
-            ...prev,
-            simulateIncomingDm(from, `Hola ${PEOPLE[seat].name}, te escribo yo.`),
-          ]);
-        }}
-        disabled={!seat}
-      >
-        Simular que el otro escribió
-      </button>
     </section>
   );
 
-  const composerForm = (
-    <form className="companion-composer" onSubmit={onComposer}>
-      <textarea
-        value={composer}
-        onChange={(event) => setComposer(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            void handleTalk(composer);
-          }
-        }}
-        placeholder={talkWith === "lulox" ? "Hablale a él…" : "Hablale a ella…"}
-        rows={2}
-        aria-label="Mensaje para Mochi"
-      />
-      <button type="submit" disabled={sending || !composer.trim()}>
-        {sending ? "…" : "Decile"}
-      </button>
-    </form>
-  );
+  function speechFor(chatId: ChatWindowId) {
+    const rows = chats[chatId] || [];
+    const intro =
+      chatId === "lulox"
+        ? "Hola. Soy Lulox, el gato ninja. Hablame."
+        : chatId === "app-agent"
+          ? "Soy la app. Pedime un pomodoro, un video o un tablero. Los tableros son pasos hacia los Sueños, no el sueño."
+          : "Hola. Soy Mochi, tu compañera. Hablame, che.";
+    return (
+      <div className="speech-stack" ref={chatId === activeChat ? logRef : undefined} aria-live="polite">
+        {rows.length === 0 ? (
+          <div className="speech-bubble mochi">{intro}</div>
+        ) : (
+          rows.slice(-12).map((row) => (
+            <div key={row.id} className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}>
+              {row.content}
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
 
-  const speech = (
-    <div className="speech-stack" ref={logRef} aria-live="polite">
-      {petChat.length === 0 ? (
-        <div className="speech-bubble mochi">
-          Hola. Soy Mochi, tu compañera. Hablame, che. Si querés que le deje un recado a Katho o
-          a Lulox, lo llevo yo. Si no hay Grok conectado, el botón Conectar abre accounts.x.ai
-          de verdad.
-        </div>
-      ) : (
-        petChat.slice(-12).map((row) => (
-          <div key={row.id} className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}>
-            {row.content}
-          </div>
-        ))
-      )}
-    </div>
+  const speech = speechFor(activeChat);
+
+  const boardsPanel = (
+    <section className="companion-card companion-grow boards-panel">
+      <h2>Tableros</h2>
+      <p className="board-legend">{boardLegendLine()}</p>
+      <p className="empty-note">
+        Columna = dónde. Color = cómo se siente. Es trabajo concreto hacia los Sueños, no un
+        reemplazo.
+      </p>
+      <div className="todo-row">
+        <input
+          value={boardDraft}
+          onChange={(event) => setBoardDraft(event.target.value)}
+          placeholder="Nuevo tablero…"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && boardDraft.trim()) {
+              persistBoards(addBoard(boards, boardDraft.trim()).boards);
+              setBoardDraft("");
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={() => {
+            if (!boardDraft.trim()) return;
+            persistBoards(addBoard(boards, boardDraft.trim()).boards);
+            setBoardDraft("");
+          }}
+        >
+          Sumar
+        </button>
+      </div>
+      <div className="boards-stack">
+        {boards.map((board) => (
+          <article key={board.id} className="board-card">
+            <strong>{board.title}</strong>
+            <div className="todo-row">
+              <input
+                value={columnDraft}
+                onChange={(event) => setColumnDraft(event.target.value)}
+                placeholder="Nueva columna (dónde)…"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && columnDraft.trim()) {
+                    persistBoards(boards.map((row) => (row.id === board.id ? addColumn(row, columnDraft.trim()) : row)));
+                    setColumnDraft("");
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => {
+                  if (!columnDraft.trim()) return;
+                  persistBoards(boards.map((row) => (row.id === board.id ? addColumn(row, columnDraft.trim()) : row)));
+                  setColumnDraft("");
+                }}
+              >
+                Columna
+              </button>
+            </div>
+            <div className="board-columns">
+              {board.columns.map((col) => (
+                <div key={col.id} className="board-column">
+                  <span className="board-col-title">{col.title}</span>
+                  {col.cards.map((card) => (
+                    <div
+                      key={card.id}
+                      className={`board-feel board-feel-${card.color}`}
+                      title={card.color}
+                    >
+                      {card.title}
+                    </div>
+                  ))}
+                  <div className="todo-row">
+                    <input
+                      value={cardDraft}
+                      onChange={(event) => setCardDraft(event.target.value)}
+                      placeholder="Tarjeta…"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && cardDraft.trim()) {
+                          persistBoards(
+                            boards.map((row) =>
+                              row.id === board.id ? addCard(row, col.id, cardDraft.trim(), cardColor) : row,
+                            ),
+                          );
+                          setCardDraft("");
+                        }
+                      }}
+                    />
+                    <select
+                      value={cardColor}
+                      onChange={(event) => setCardColor(event.target.value as FeelColor)}
+                      aria-label="Color de cómo se siente"
+                    >
+                      {FEEL_COLOR_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => {
+                        if (!cardDraft.trim()) return;
+                        persistBoards(
+                          boards.map((row) =>
+                            row.id === board.id ? addCard(row, col.id, cardDraft.trim(), cardColor) : row,
+                          ),
+                        );
+                        setCardDraft("");
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 
   const grokReturnTo =
@@ -1179,36 +1424,79 @@ export function CompanionSurface() {
     if (id === "video") return videoPanel;
     if (id === "radio") return radioPanel;
     if (id === "dm") return privatePanel;
+    if (id === "boards") return boardsPanel;
     return agentsPanel;
   };
 
-  if (isMobile === null) {
+  function composerFor(chatId: ChatWindowId) {
+    return (
+      <form
+        className="companion-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleTalk(composer, chatId);
+        }}
+      >
+        <textarea
+          value={activeChat === chatId ? composer : ""}
+          onFocus={() => setActiveChat(chatId)}
+          onChange={(event) => {
+            setActiveChat(chatId);
+            setComposer(event.target.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void handleTalk(composer, chatId);
+            }
+          }}
+          placeholder={
+            chatId === "lulox"
+              ? "Hablale a él…"
+              : chatId === "app-agent"
+                ? "Pomodoro, YouTube o tableros…"
+                : "Hablale a ella…"
+          }
+          rows={2}
+          aria-label={`Mensaje para ${CHAT_WINDOWS[chatId].label}`}
+        />
+        <button type="submit" disabled={sending || (activeChat === chatId && !composer.trim())}>
+          {sending && activeChat === chatId ? "…" : "Decile"}
+        </button>
+      </form>
+    );
+  }
+
+  if (auth === undefined || isMobile === null) {
     return <div className="companion-root" data-companion-surface />;
   }
 
+  if (!auth) {
+    return <CompanionLogin onSession={setAuth} />;
+  }
+
+  const luloxAlert =
+    mascotAlert && seat === "lulox" ? mascotAlert : mascotAlert && seat === "katho" ? null : mascotAlert;
+  const mochiAlertText = seat === "lulox" ? null : mascotAlert;
+
   return (
     <div className="companion-root" data-companion-surface>
-      <CompanionWanderer
-        working={mochiWorking || kathoWorking}
-        perch={perch}
-        scale={isMobile ? 0.55 : 0.72}
-        pack="mochi"
-        alertText={mascotAlert}
-        onClick={() => openTalk("mochi")}
+      <CompanionPair
+        view={togetherView}
+        mochiWorking={mochiWorking || kathoWorking}
+        luloxWorking={luloxWorking}
+        mochiAlert={mochiAlertText}
+        luloxAlert={luloxAlert}
+        onMochiClick={() => openTalk("mochi")}
+        onLuloxClick={() => openTalk("lulox")}
+        scale={isMobile ? 0.5 : 0.72}
       />
-      {isMobile ? null : (
-        <CompanionWanderer
-          working={luloxWorking}
-          perch={null}
-          scale={0.62}
-          pack="lulox"
-          label="Lulox, el gato ninja"
-          onClick={() => openTalk("lulox")}
-        />
-      )}
       <Link href="/" className="companion-back">
         ← al sitio
       </Link>
+      <button type="button" className="companion-logout" onClick={() => void logout()}>
+        Salir
+      </button>
 
       {isMobile ? null : (
         <div className="companion-desktop">
@@ -1229,32 +1517,40 @@ export function CompanionSurface() {
             );
           })}
 
-          {talkOpen ? (
-            <section
-              className={`desk-window desk-talk${focusApp === "talk" ? " is-focus" : ""}`}
-              onPointerDown={() => setFocusApp("talk")}
-              role="dialog"
-              aria-label={talkWith === "lulox" ? "Hablar con Lulox" : "Hablar con Mochi"}
-            >
-              <header className="desk-window-chrome">
-                <span className="traffic" aria-hidden />
-                <span>{talkWith === "lulox" ? "Lulox" : "Mochi"}</span>
-                <button
-                  type="button"
-                  className="desk-close"
-                  onClick={() => setTalkOpen(false)}
-                  aria-label="Cerrar"
-                >
-                  ×
-                </button>
-              </header>
-              <div className="desk-window-body desk-talk-body">
-                {speech}
-                {conectar}
-                {composerForm}
-              </div>
-            </section>
-          ) : null}
+          {openChats.map((chatId) => {
+            const meta = CHAT_WINDOWS[chatId];
+            return (
+              <section
+                key={chatId}
+                className={`desk-window desk-talk chat-${chatId}${focusApp === chatId ? " is-focus" : ""}`}
+                onPointerDown={() => {
+                  setFocusApp(chatId);
+                  setActiveChat(chatId);
+                }}
+                role="dialog"
+                aria-label={`Hablar con ${meta.label}`}
+                style={{ borderColor: meta.hex }}
+              >
+                <header className="desk-window-chrome" style={{ background: meta.chrome }}>
+                  <span className="traffic" aria-hidden />
+                  <span>{meta.label}</span>
+                  <button
+                    type="button"
+                    className="desk-close"
+                    onClick={() => closeTalk(chatId)}
+                    aria-label={`Cerrar ${meta.label}`}
+                  >
+                    ×
+                  </button>
+                </header>
+                <div className="desk-window-body desk-talk-body">
+                  {speechFor(chatId)}
+                  {chatId === "mochi" ? conectar : null}
+                  {composerFor(chatId)}
+                </div>
+              </section>
+            );
+          })}
 
           {pickerOpen ? (
             <div className="desk-picker" role="menu" aria-label="Miniapps">
@@ -1291,6 +1587,13 @@ export function CompanionSurface() {
             })}
             <button
               type="button"
+              className={focusApp === "app-agent" ? "is-on" : ""}
+              onClick={() => openTalk("app-agent")}
+            >
+              App
+            </button>
+            <button
+              type="button"
               className={`desk-plus${pickerOpen ? " is-on" : ""}`}
               onClick={() => setPickerOpen((v) => !v)}
               aria-label="Agregar o quitar miniapps"
@@ -1305,25 +1608,24 @@ export function CompanionSurface() {
         <div className="companion-mobile">
           {mobileTab === "mochi" ? (
             <div className="mobile-mochi">
-              <div className="mobile-log" ref={mobileLogRef} aria-live="polite">
-                {petChat.length === 0 ? (
-                  <div className="speech-bubble mochi">
-                    Tocame y hablame. El resto vive en el dock de abajo, no en un escritorio
-                    achicado.
-                  </div>
-                ) : (
-                  petChat.slice(-20).map((row) => (
-                    <div
-                      key={row.id}
-                      className={`speech-bubble ${row.role === "mochi" ? "mochi" : "user"}`}
-                    >
-                      {row.content}
-                    </div>
-                  ))
-                )}
+              <div className="mobile-chat-switch" role="tablist" aria-label="Chats">
+                {(["mochi", "lulox", "app-agent"] as ChatWindowId[]).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={activeChat === id ? "is-on" : ""}
+                    style={{ borderColor: CHAT_WINDOWS[id].hex }}
+                    onClick={() => openTalk(id)}
+                  >
+                    {CHAT_WINDOWS[id].label}
+                  </button>
+                ))}
               </div>
-              {conectar}
-              {composerForm}
+              <div className="mobile-log" ref={mobileLogRef} aria-live="polite">
+                {speechFor(activeChat)}
+              </div>
+              {activeChat !== "lulox" ? conectar : null}
+              {composerFor(activeChat)}
             </div>
           ) : (
             <div className="mobile-sheet">
@@ -1341,6 +1643,7 @@ export function CompanionSurface() {
                   {privatePanel}
                 </>
               ) : null}
+              {mobileTab === "boards" ? boardsPanel : null}
             </div>
           )}
           <nav className="mobile-dock" aria-label="Pieza móvil">
@@ -1351,6 +1654,7 @@ export function CompanionSurface() {
                 ["notas", "Notas"],
                 ["video", "Video"],
                 ["dm", "Chat"],
+                ["boards", "Tableros"],
               ] as Array<[MobileTab, string]>
             ).map(([id, label]) => (
               <button

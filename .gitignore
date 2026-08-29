@@ -13,6 +13,7 @@ legacy/
 .opencode/plans/
 .vercel
 .env*.local
+nextjs/.data/
 foundry/.env
 foundry/cache/
 foundry/out/

@@ -192,6 +192,14 @@ export type Bounds = { width: number; height: number };
 
 export type Perch = { x: number; y: number };
 
+export type WanderBias = {
+  xMin: number;
+  xMax: number;
+  gatherX?: number;
+  facingRight?: boolean;
+  pose?: "kiss" | "hop" | "walk-together" | "idle-chat" | "separate" | "idle";
+};
+
 function animDuration(name: string): number {
   const anim = ANIMATIONS_FULL[name];
   if (!anim) return 0;
@@ -419,14 +427,48 @@ function updateAnimation(m: ShimejiMascot) {
   m.transform = "none";
 }
 
+function applyWanderBias(m: ShimejiMascot, bounds: Bounds, scale: number, bias: WanderBias) {
+  const size = SPRITE_SIZE * scale;
+  const xMin = Math.max(0, bias.xMin);
+  const xMax = Math.max(xMin, Math.min(bounds.width - size, bias.xMax - size));
+  if (m.x < xMin) {
+    m.x = xMin;
+    if (m.state === State.WALKING) setWalkDirection(m, true);
+  }
+  if (m.x > xMax) {
+    m.x = xMax;
+    if (m.state === State.WALKING) setWalkDirection(m, false);
+  }
+  if (m.isDragging || m.forceWorking) return;
+  if (bias.gatherX != null) {
+    const target = Math.max(xMin, Math.min(xMax, bias.gatherX));
+    const dx = target - m.x;
+    if (Math.abs(dx) > 6) {
+      startWalking(m, dx > 0);
+    } else if (bias.pose === "kiss" || bias.pose === "idle-chat" || bias.pose === "separate") {
+      if (m.state === State.WALKING) setAnim(m, State.IDLE, "idle");
+      m.direction = 0;
+      if (bias.facingRight != null) m.facingRight = bias.facingRight;
+    }
+  }
+  if (bias.pose === "walk-together" && m.state !== State.WALKING && !m.isDragging) {
+    startWalking(m, bias.facingRight ?? true);
+  }
+  if (bias.facingRight != null && (bias.pose === "kiss" || bias.pose === "idle-chat")) {
+    m.facingRight = bias.facingRight;
+  }
+}
+
 export function tickShimeji(
   m: ShimejiMascot,
   bounds: Bounds,
   scale: number,
   _cursorY: number | null,
   perch: Perch | null,
+  bias?: WanderBias | null,
 ) {
   updateState(m, bounds, scale, perch);
+  if (bias) applyWanderBias(m, bounds, scale, bias);
   updateAnimation(m);
 }
 

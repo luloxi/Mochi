@@ -4,9 +4,9 @@ export type PersonId = "katho" | "lulox";
 
 export type PetMood = "idle" | "listening" | "thinking" | "happy" | "sleepy" | "delivering";
 
-export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes";
+export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes" | "boards";
 
-export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes"];
+export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes", "boards"];
 
 export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "pomo", label: "Pomodoro" },
@@ -15,6 +15,7 @@ export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "radio", label: "Radio" },
   { id: "dm", label: "DM" },
   { id: "agentes", label: "Agentes" },
+  { id: "boards", label: "Tableros" },
 ];
 
 export type CompanionMsg = {
@@ -46,6 +47,8 @@ export type AgentJob = {
   ticks: number;
 };
 
+export type FeelColorName = "red" | "orange" | "yellow" | "green" | "blue" | "purple";
+
 export type CompanionIntent =
   | { type: "chat" }
   | { type: "pomodoro"; action: "start" | "pause" | "reset" | "skip"; minutes?: number }
@@ -53,7 +56,13 @@ export type CompanionIntent =
   | { type: "video"; url: string }
   | { type: "message-person"; to: PersonId; text: string }
   | { type: "ask-agent"; text: string }
-  | { type: "ask-person-agent"; to: PersonId; text: string };
+  | { type: "ask-person-agent"; to: PersonId; text: string }
+  | {
+      type: "board";
+      action: "open" | "add-board" | "add-column" | "add-card";
+      title?: string;
+      color?: FeelColorName;
+    };
 
 export const COMPANION_STORAGE = {
   seat: "mochi-companion-seat-v1",
@@ -473,6 +482,21 @@ export function localMochiReply(args: {
     return "Puse el video en el rincón. Si no carga, pegame otra URL.";
   }
 
+  if (intent.type === "board") {
+    if (intent.action === "add-board") {
+      return intent.title
+        ? `Armé el tablero “${intent.title}”. Es un paso, no el Sueño entero.`
+        : "Armé un tablero nuevo. Columna = dónde; color = cómo se siente.";
+    }
+    if (intent.action === "add-column") {
+      return intent.title ? `Sumé la columna “${intent.title}”. Ahí es el dónde.` : "Sumé una columna. El título es el dónde.";
+    }
+    if (intent.action === "add-card") {
+      return intent.title ? `Anoté “${intent.title}” en el tablero.` : "Anoté una tarjeta. El color dice cómo se siente.";
+    }
+    return "Abrí los tableros. Rojo se pudre, naranja hay que hacerlo, amarillo idea/someday, verde parked. Azul coordinar, violeta trámite.";
+  }
+
   if (intent.type === "message-person") {
     const dest = PEOPLE[intent.to].name;
     return `Se lo dejo yo a ${dest}: “${intent.text}”. Queda en el chat de Katho y Lulox.`;
@@ -516,8 +540,9 @@ Sos Mochi, la compañera del medio. Coneja blanca, capa roja/amarilla, estrellit
 - Si te piden mandar un recado, lo mandás VOS. No le pidas a la persona que apriete un botón extra.
 - Si te piden preguntarle al agente de Katho o al agente de Lulox, lo preguntás VOS y después contás la respuesta.
 - No inventes conexiones, bots, ni botones falsos. Si algo no está, decilo con honestidad.
-- No prometas servidores que no existen. El chat entre Katho y Lulox vive en este navegador.
-- Katho y Lulox son personas-agente. Si los dejan trabajando, siguen en esta pestaña del navegador, no en la nube.
+- El DM entre Katho y Lulox se sincroniza entre los dos. Si uno deja de estar, Mochi y el gato se separan en el escritorio.
+- Los tableros son trabajo concreto hacia los Sueños (pierna biónica, Neuralink, Elon/SpaceX). No reemplazan el sueño.
+- Katho y Lulox son personas-agente. Si los dejan trabajando, siguen acá.
 `;
 
 export function pickLuloxMood(text: string): "neutral" | "happy" | "negative" {

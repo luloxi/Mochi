@@ -18,7 +18,9 @@ import {
   type Perch,
   type ShimejiMascot,
   type SpritePackId,
+  type WanderBias,
 } from "@/lib/companion/shimeji-engine";
+import { deskZones, type PresenceView } from "@/lib/companion/presence";
 import {
   drawFacingSprite,
   mascotDrawTransform,
@@ -33,6 +35,11 @@ type CompanionPetProps = {
   onClick?: () => void;
   pack?: SpritePackId;
   alertText?: string | null;
+  bias?: WanderBias | null;
+  extraClass?: string;
+  bubble?: string | null;
+  togetherMode?: "together" | "separate";
+  togetherAction?: string;
 };
 
 function useBounds(node: HTMLElement | null): Bounds {
@@ -82,9 +89,16 @@ export function CompanionWanderer({
   pack = "mochi",
   alertText = null,
   label,
+  bias = null,
+  extraClass = "",
+  bubble = null,
+  togetherMode,
+  togetherAction,
 }: CompanionPetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mascotRef = useRef<ShimejiMascot | null>(null);
+  const biasRef = useRef<WanderBias | null>(bias ?? null);
+  biasRef.current = bias ?? null;
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [, setTick] = useState(0);
   const bounds = useBounds(host);
@@ -109,7 +123,7 @@ export function CompanionWanderer({
     const id = window.setInterval(() => {
       const m = mascotRef.current;
       if (!m) return;
-      tickShimeji(m, bounds, scale, null, perch);
+      tickShimeji(m, bounds, scale, null, perch, biasRef.current);
       setTick((n) => (n + 1) % 1_000_000);
     }, TICK_MS);
     return () => {
@@ -150,7 +164,7 @@ export function CompanionWanderer({
       {m ? (
         <button
           type="button"
-          className={`companion-mascot${m.isDragging ? " is-dragging" : ""}`}
+          className={`companion-mascot${m.isDragging ? " is-dragging" : ""}${extraClass ? ` ${extraClass}` : ""}`}
           style={{
             left: box.left,
             top: box.top,
@@ -162,6 +176,8 @@ export function CompanionWanderer({
           data-facing={m.facingRight ? "right" : "left"}
           data-pack={pack}
           data-no-flip="true"
+          data-together-mode={togetherMode || undefined}
+          data-together-action={togetherAction || undefined}
           aria-label={label || (pack === "lulox" ? "Lulox, el gato ninja" : "Mochi, arrastrala o mirala caminar")}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
@@ -169,6 +185,11 @@ export function CompanionWanderer({
           onPointerCancel={pointerUp}
         >
           <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
+          {bubble ? (
+            <span className="mascot-idle-chat" role="status">
+              {bubble}
+            </span>
+          ) : null}
           {alertText ? (
             <span className="mascot-alert" role="status">
               {alertText}
@@ -228,6 +249,75 @@ export function CompanionWorkingSprite({
         }
         facingRight={facingRight}
         pack={pack}
+      />
+    </div>
+  );
+}
+
+export function CompanionPair({
+  view,
+  mochiWorking,
+  luloxWorking,
+  mochiAlert,
+  luloxAlert,
+  onMochiClick,
+  onLuloxClick,
+  scale = 0.72,
+}: {
+  view: PresenceView;
+  mochiWorking: boolean;
+  luloxWorking: boolean;
+  mochiAlert: string | null;
+  luloxAlert: string | null;
+  onMochiClick: () => void;
+  onLuloxClick: () => void;
+  scale?: number;
+}) {
+  const [width, setWidth] = useState(800);
+  useEffect(() => {
+    const read = () => setWidth(window.innerWidth);
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+  const action = view.mode === "separate" ? "separate" : view.action;
+  const zones = deskZones(view.mode, action, width);
+  const hop = view.mode === "together" && view.action === "hop";
+  const kiss = view.mode === "together" && view.action === "kiss";
+  const chat = view.mode === "together" && view.action === "idle-chat";
+  const pose = view.mode === "separate" ? "separate" : view.action;
+  return (
+    <div
+      data-companion-pair
+      data-presence-mode={view.mode}
+      data-presence-action={view.action}
+    >
+      <CompanionWanderer
+        working={mochiWorking}
+        perch={null}
+        scale={scale}
+        pack="mochi"
+        alertText={mochiAlert}
+        onClick={onMochiClick}
+        bias={{ ...zones.mochi, pose }}
+        extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
+        bubble={chat ? "che" : null}
+        togetherMode={view.mode}
+        togetherAction={view.action}
+      />
+      <CompanionWanderer
+        working={luloxWorking}
+        perch={null}
+        scale={scale * 0.92}
+        pack="lulox"
+        label="Lulox, el gato ninja"
+        alertText={luloxAlert}
+        onClick={onLuloxClick}
+        bias={{ ...zones.lulox, pose }}
+        extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
+        bubble={chat ? "miau" : null}
+        togetherMode={view.mode}
+        togetherAction={view.action}
       />
     </div>
   );
