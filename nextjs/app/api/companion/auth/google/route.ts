@@ -5,6 +5,7 @@ import {
   encodeCompanionSession,
   googleClientId,
   publicCompanionSession,
+  readGoogleAccessTokenEmail,
   readGoogleIdTokenEmail,
   sessionCookieOptions,
 } from "@/lib/companion/auth";
@@ -14,8 +15,11 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   const json = await request.json().catch(() => null);
   const idToken = typeof json?.idToken === "string" ? json.idToken : "";
+  const accessToken = typeof json?.accessToken === "string" ? json.accessToken : "";
   const clientId = googleClientId();
-  const payload = await readGoogleIdTokenEmail(idToken, clientId);
+  const payload = idToken
+    ? await readGoogleIdTokenEmail(idToken, clientId)
+    : await readGoogleAccessTokenEmail(accessToken, clientId);
   if (!payload) {
     return NextResponse.json({ error: "INVALID_TOKEN" }, { status: 401 });
   }

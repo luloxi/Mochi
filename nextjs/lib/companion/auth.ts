@@ -196,6 +196,39 @@ export function sessionCookieOptions() {
   };
 }
 
+
+export async function readGoogleAccessTokenEmail(
+  accessToken: string,
+  expectedClientId: string,
+): Promise<{ email: string; email_verified: boolean } | null> {
+  const token = String(accessToken || "").trim();
+  if (!token || token.length < 20) return null;
+  try {
+    const infoUrl = `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`;
+    const infoRes = await fetch(infoUrl, { cache: "no-store" });
+    if (!infoRes.ok) return null;
+    const info = (await infoRes.json()) as { aud?: string; azp?: string };
+    const audience = info.aud || info.azp || "";
+    if (expectedClientId && audience && audience !== expectedClientId) return null;
+    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      email?: string;
+      email_verified?: boolean | string;
+    };
+    if (typeof json.email !== "string") return null;
+    return {
+      email: json.email,
+      email_verified: json.email_verified === true || json.email_verified === "true",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function readGoogleIdTokenEmail(
   idToken: string,
   expectedClientId: string,

@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import type { CompanionAuthSession } from "@/lib/companion/auth";
 
-type Gsi = {
+type GsiOauth = {
   accounts: {
-    id: {
-      initialize: (opts: Record<string, unknown>) => void;
-      renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void;
-      prompt: () => void;
+    oauth2: {
+      initTokenClient: (opts: {
+        client_id: string;
+        scope: string;
+        prompt?: string;
+        callback: (resp: { access_token?: string; error?: string }) => void;
+      }) => { requestAccessToken: () => void };
     };
   };
 };
@@ -19,7 +22,8 @@ export function CompanionLogin({
 }: {
   onSession: (session: CompanionAuthSession) => void;
 }) {
-  const btnRef = useRef<HTMLDivElement | null>(null);
+  const clientRef = useRef<{ requestAccessToken: () => void } | null>(null);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientId =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -29,21 +33,22 @@ export function CompanionLogin({
     if (!clientId) return;
     let cancelled = false;
     const boot = () => {
-      const google = (window as unknown as { google?: Gsi }).google;
-      if (!google?.accounts?.id || !btnRef.current) return false;
-      google.accounts.id.initialize({
+      const google = (window as unknown as { google?: GsiOauth }).google;
+      if (!google?.accounts?.oauth2) return false;
+      clientRef.current = google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        auto_select: false,
-        cancel_on_tap_outside: false,
-        itp_support: true,
-        use_fedcm_for_prompt: true,
-        ux_mode: "popup",
-        callback: async (resp: { credential: string }) => {
+        scope: "openid email profile",
+        prompt: "select_account",
+        callback: async (resp) => {
+          if (!resp?.access_token) {
+            if (!cancelled) setError("Probá de nuevo.");
+            return;
+          }
           const res = await fetch("/api/companion/auth/google", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ idToken: resp.credential }),
+            body: JSON.stringify({ accessToken: resp.access_token }),
           });
           const json = await res.json().catch(() => null);
           if (cancelled) return;
@@ -58,21 +63,7 @@ export function CompanionLogin({
           setError("Probá de nuevo.");
         },
       });
-      btnRef.current.innerHTML = "";
-      google.accounts.id.renderButton(btnRef.current, {
-        theme: "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "pill",
-        width: "240",
-        click_listener: () => {
-          try {
-            google.accounts.id.prompt();
-          } catch {
-            /* GIS button handles the click */
-          }
-        },
-      });
+      if (!cancelled) setReady(true);
       return true;
     };
     if (boot()) {
@@ -94,7 +85,17 @@ export function CompanionLogin({
       <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       <p className="companion-login-hi">Hola.</p>
       <p className="companion-login-line">Katho ella. Lulox él. Los dos.</p>
-      {clientId ? <div ref={btnRef} className="companion-google-btn" /> : null}
+      {clientId ? (
+        <button
+          type="button"
+          className="companion-google-fallback"
+          data-companion-google-oauth
+          disabled={!ready}
+          onClick={() => clientRef.current?.requestAccessToken()}
+        >
+          Continuar con Google
+        </button>
+      ) : null}
       {error ? <p className="companion-login-error">{error}</p> : null}
     </div>
   );
