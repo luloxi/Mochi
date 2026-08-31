@@ -12,13 +12,22 @@ import {
 } from "./star-eye";
 import {
   createMascot,
+  collideMascots,
+  endDrag,
   isSitPcSprite,
+  nearestEdge,
+  promoteDrag,
   setWorking,
+  snapToNearestEdge,
+  spriteOrientTransform,
   spriteUrl,
   startWalking,
+  startWalkingOnEdge,
   tickShimeji,
   LULOX_SPRITE_BASE,
   SPRITE_BASE,
+  State,
+  bubblePlacementForEdge,
 } from "./shimeji-engine";
 import {
   PERSONAS,
@@ -275,5 +284,96 @@ describe("dm alert + personas + agents", () => {
     assert.equal(stand.width, 384);
     assert.equal(stand.data[3], 0);
     assert.equal(existsSync(join(here, "../../public/.ref")), false);
+  });
+});
+
+describe("shimeji perimeter + collision + snap", () => {
+  const bounds = { width: 400, height: 300 };
+  const scale = 1;
+  const size = 128;
+  const right = bounds.width - size;
+  const ceiling = size;
+  const floor = bounds.height;
+
+  it("continues from floor onto the right wall then the ceiling", () => {
+    const m = createMascot(bounds, scale);
+    m.x = right - 2;
+    m.y = floor;
+    m.edge = "floor";
+    startWalkingOnEdge(m, "floor", true);
+    for (let i = 0; i < 8; i++) tickShimeji(m, bounds, scale, null, null);
+    assert.equal(m.edge, "right");
+    assert.equal(m.x, right);
+    assert.ok(m.y < floor, `expected climb the wall, y=${m.y}`);
+    assert.equal(m.transform, "none");
+    assert.equal(spriteOrientTransform("right"), "rotate(-90deg)");
+    assert.equal(isWholeBodyFlip(m.transform), false);
+
+    m.y = ceiling + 2;
+    m.edge = "right";
+    startWalkingOnEdge(m, "right", true);
+    for (let i = 0; i < 8; i++) tickShimeji(m, bounds, scale, null, null);
+    assert.equal(m.edge, "ceiling");
+    assert.equal(m.y, ceiling);
+    assert.ok(m.x < right, `expected walk the ceiling, x=${m.x}`);
+    assert.equal(bubblePlacementForEdge("ceiling"), "below-feet");
+    assert.equal(bubblePlacementForEdge("left"), "beside-right");
+    assert.equal(bubblePlacementForEdge("right"), "beside-left");
+    assert.equal(bubblePlacementForEdge("floor"), "above-head");
+    assert.equal(spriteOrientTransform("ceiling"), "rotate(180deg)");
+    assert.equal(spriteOrientTransform("left"), "rotate(90deg)");
+    assert.equal(spriteOrientTransform("floor"), "none");
+  });
+
+  it("continues from floor onto the left wall then the ceiling", () => {
+    const m = createMascot(bounds, scale);
+    m.x = 2;
+    m.y = floor;
+    startWalkingOnEdge(m, "floor", false);
+    for (let i = 0; i < 8; i++) tickShimeji(m, bounds, scale, null, null);
+    assert.equal(m.edge, "left");
+    assert.equal(m.x, 0);
+    assert.ok(m.y < floor);
+    m.y = ceiling + 2;
+    startWalkingOnEdge(m, "left", false);
+    for (let i = 0; i < 8; i++) tickShimeji(m, bounds, scale, null, null);
+    assert.equal(m.edge, "ceiling");
+    assert.equal(m.y, ceiling);
+  });
+
+  it("pets collide on the same edge and reverse instead of overlapping", () => {
+    const a = createMascot(bounds, scale);
+    const b = createMascot(bounds, scale);
+    a.edge = "floor";
+    b.edge = "floor";
+    a.y = floor;
+    b.y = floor;
+    a.x = 80;
+    b.x = 90;
+    startWalkingOnEdge(a, "floor", true);
+    startWalkingOnEdge(b, "floor", false);
+    const hit = collideMascots(a, scale, b, scale);
+    assert.equal(hit, true);
+    assert.ok(Math.abs(a.x - b.x) > Math.abs(80 - 90));
+    assert.notEqual(a.direction, b.direction);
+  });
+
+  it("endDrag snaps to the nearest edge and starts walking, never falling", () => {
+    const m = createMascot(bounds, scale);
+    m.x = 200;
+    m.y = 150;
+    promoteDrag(m);
+    assert.equal(m.state, State.DRAGGED);
+    const result = endDrag(m, bounds, scale);
+    assert.equal(result, "drop");
+    assert.equal(m.isDragging, false);
+    assert.notEqual(m.state, State.FALLING);
+    assert.equal(m.state, State.WALKING);
+    assert.equal(m.edge, nearestEdge(200, 150, bounds, scale));
+    snapToNearestEdge(m, bounds, scale);
+    if (m.edge === "ceiling") assert.equal(m.y, ceiling);
+    if (m.edge === "floor") assert.equal(m.y, floor);
+    if (m.edge === "left") assert.equal(m.x, 0);
+    if (m.edge === "right") assert.equal(m.x, right);
   });
 });

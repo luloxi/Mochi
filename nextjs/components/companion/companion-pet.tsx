@@ -6,14 +6,18 @@ import {
   SPRITE_SIZE,
   TICK_MS,
   beginDragPending,
+  bubblePlacementForEdge,
   createMascot,
   createWorkingMascot,
   endDrag,
   mascotDrawBox,
   moveDrag,
+  registerPet,
   setWorking,
+  spriteOrientTransform,
   spriteUrl,
   tickShimeji,
+  unregisterPet,
   type Bounds,
   type Perch,
   type ShimejiMascot,
@@ -113,6 +117,9 @@ export function CompanionWanderer({
 
   useEffect(() => {
     if (!mascotRef.current) mascotRef.current = createMascot(bounds, scale);
+    const m = mascotRef.current;
+    registerPet(m, scale);
+    return () => unregisterPet(m);
   }, [bounds, scale]);
 
   useEffect(() => {
@@ -154,7 +161,7 @@ export function CompanionWanderer({
     } catch {
       // ignore
     }
-    const result = endDrag(mascot);
+    const result = endDrag(mascot, bounds, scale);
     if (result === "click") onClick?.();
     setTick((n) => (n + 1) % 1_000_000);
   }
@@ -175,6 +182,7 @@ export function CompanionWanderer({
           }}
           data-facing={m.facingRight ? "right" : "left"}
           data-pack={pack}
+          data-edge={m.edge}
           data-no-flip="true"
           data-together-mode={togetherMode || undefined}
           data-together-action={togetherAction || undefined}
@@ -192,9 +200,11 @@ export function CompanionWanderer({
           onPointerUp={pointerUp}
           onPointerCancel={pointerUp}
         >
-          <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
+          <span className="mascot-sprite" style={{ transform: spriteOrientTransform(m.edge) }} data-edge={m.edge}>
+            <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
+          </span>
           {bubble ? (
-            <span className="mascot-bubble" data-bubble-placement="above-head" role="status">
+            <span className="mascot-bubble" data-bubble-placement={bubblePlacementForEdge(m.edge)} role="status">
               {bubble}
             </span>
           ) : null}
@@ -276,6 +286,9 @@ export function CompanionPair({
   onLuloxClick,
   onNimboClick,
   scale = 0.72,
+  showMochi = true,
+  showLulox = true,
+  showNimbo = true,
 }: {
   view: PresenceView;
   mochiWorking: boolean;
@@ -290,6 +303,9 @@ export function CompanionPair({
   onLuloxClick: () => void;
   onNimboClick: () => void;
   scale?: number;
+  showMochi?: boolean;
+  showLulox?: boolean;
+  showNimbo?: boolean;
 }) {
   const [width, setWidth] = useState(800);
   useEffect(() => {
@@ -299,7 +315,10 @@ export function CompanionPair({
     return () => window.removeEventListener("resize", read);
   }, []);
   const action = view.mode === "separate" ? "separate" : view.action;
-  const zones = deskZones(view.mode, action, width);
+  const gather =
+    view.mode === "together" &&
+    (view.action === "kiss" || view.action === "hop" || view.action === "idle-chat" || view.action === "walk-together");
+  const zones = gather ? deskZones(view.mode, action, width) : null;
   const hop = view.mode === "together" && view.action === "hop";
   const kiss = view.mode === "together" && view.action === "kiss";
   const chat = view.mode === "together" && view.action === "idle-chat";
@@ -310,45 +329,51 @@ export function CompanionPair({
       data-presence-mode={view.mode}
       data-presence-action={view.action}
     >
-      <CompanionWanderer
-        working={mochiWorking}
-        perch={null}
-        scale={scale}
-        pack="mochi"
-        label="Mochi"
-        alertText={mochiAlert}
-        onClick={onMochiClick}
-        bias={{ ...zones.mochi, pose }}
-        extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
-        bubble={mochiBubble ?? (chat ? "che" : "hola")}
-        togetherMode={view.mode}
-        togetherAction={view.action}
-      />
-      <CompanionWanderer
-        working={nimboWorking}
-        perch={null}
-        scale={scale * 0.88}
-        pack="nimbo"
-        label="Nimbo"
-        onClick={onNimboClick}
-        bias={{ ...zones.nimbo, pose: "idle" }}
-        extraClass={`is-nimbo${nimboWorking ? " is-play" : ""}`}
-        bubble={nimboBubble ?? "dale"}
-      />
-      <CompanionWanderer
-        working={luloxWorking}
-        perch={null}
-        scale={scale * 0.92}
-        pack="lulox"
-        label="Lulox, el gato ninja"
-        alertText={luloxAlert}
-        onClick={onLuloxClick}
-        bias={{ ...zones.lulox, pose }}
-        extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
-        bubble={luloxBubble ?? (chat ? "miau" : "miau")}
-        togetherMode={view.mode}
-        togetherAction={view.action}
-      />
+      {showMochi ? (
+        <CompanionWanderer
+          working={mochiWorking}
+          perch={null}
+          scale={scale}
+          pack="mochi"
+          label="Mochi"
+          alertText={mochiAlert}
+          onClick={onMochiClick}
+          bias={zones ? { ...zones.mochi, pose } : null}
+          extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
+          bubble={mochiBubble ?? (chat ? "che" : "hola")}
+          togetherMode={view.mode}
+          togetherAction={view.action}
+        />
+      ) : null}
+      {showNimbo ? (
+        <CompanionWanderer
+          working={nimboWorking}
+          perch={null}
+          scale={scale * 0.88}
+          pack="nimbo"
+          label="Nimbo"
+          onClick={onNimboClick}
+          bias={null}
+          extraClass={`is-nimbo${nimboWorking ? " is-play" : ""}`}
+          bubble={nimboBubble ?? "dale"}
+        />
+      ) : null}
+      {showLulox ? (
+        <CompanionWanderer
+          working={luloxWorking}
+          perch={null}
+          scale={scale * 0.92}
+          pack="lulox"
+          label="Lulox, el gato ninja"
+          alertText={luloxAlert}
+          onClick={onLuloxClick}
+          bias={zones ? { ...zones.lulox, pose } : null}
+          extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
+          bubble={luloxBubble ?? (chat ? "miau" : "miau")}
+          togetherMode={view.mode}
+          togetherAction={view.action}
+        />
+      ) : null}
     </div>
   );
 }

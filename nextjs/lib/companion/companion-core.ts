@@ -18,6 +18,16 @@ export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "boards", label: "Tableros" },
 ];
 
+export const RA_APP_IDS = ["pomo", "notas", "video", "radio", "boards"] as const;
+export type RaAppId = (typeof RA_APP_IDS)[number];
+export const RA_APPS: { id: RaAppId; label: string }[] = [
+  { id: "pomo", label: "tomate" },
+  { id: "notas", label: "notas" },
+  { id: "video", label: "video" },
+  { id: "radio", label: "ruido" },
+  { id: "boards", label: "Ra" },
+];
+
 export type CompanionMsg = {
   id: string;
   role: "user" | "mochi";

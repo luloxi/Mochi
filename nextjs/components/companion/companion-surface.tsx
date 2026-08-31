@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CompanionPair } from "@/components/companion/companion-pet";
 import { CompanionLogin } from "@/components/companion/companion-login";
+import { CompanionApps } from "@/components/companion/companion-apps";
 import {
   COMPANION_DUE_EVENT,
   addTodoItem,
@@ -18,20 +19,21 @@ import {
   type PrivateMsg,
 } from "@/lib/companion/companion-core";
 import { type CompanionAuthSession } from "@/lib/companion/auth";
-import { CHAT_WINDOWS, parseNimboIntent } from "@/lib/companion/chats";
+import { CHAT_WINDOWS, localHelpReply, parseNimboIntent, roleForPetClick } from "@/lib/companion/chats";
 import { RA_MISSING_LINE, type RaBoard } from "@/lib/companion/trello";
 import {
   DEFAULT_TOGETHER_CHANCE,
   DEFAULT_TOGETHER_COOLDOWN_MS,
   leaveSignalText,
   nextTogetherTick,
+  presenceDot,
   type PresenceStatus,
   type PresenceView,
 } from "@/lib/companion/presence";
 import { bubbleAboveHead } from "@/lib/companion/desk";
 
 type TalkMsg = { id: string; from: "me" | "them"; content: string };
-type OpenChat = "human" | "nimbo" | null;
+type OpenChat = "human" | "nimbo" | "help" | null;
 
 const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], configured: false };
 
@@ -55,9 +57,11 @@ export function CompanionSurface() {
   const [privateChat, setPrivateChat] = useState<PrivateMsg[]>([]);
   const [nimboLines, setNimboLines] = useState<string[]>([]);
   const [nimboLog, setNimboLog] = useState<TalkMsg[]>([]);
+  const [helpLog, setHelpLog] = useState<TalkMsg[]>([]);
   const [board, setBoard] = useState<RaBoard>(EMPTY_BOARD);
   const [mascotAlert, setMascotAlert] = useState<string | null>(null);
   const [pomoOn, setPomoOn] = useState(false);
+  const [phoneFoco, setPhoneFoco] = useState(false);
   const seenDmRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -219,6 +223,7 @@ export function CompanionSurface() {
     await fetch("/api/companion/auth/logout", { method: "POST", credentials: "include" });
     setAuth(null);
     setOpenChat(null);
+    setPhoneFoco(false);
   }
 
   function sendDm(text: string) {
@@ -234,6 +239,34 @@ export function CompanionSurface() {
         if (Array.isArray(json?.dms)) setPrivateChat(json.dms);
       })
       .catch(() => {});
+  }
+
+  async function sendHelp(text: string) {
+    if (!seat) return;
+    const history = helpLog.map((row) => ({
+      role: row.from === "me" ? ("user" as const) : ("assistant" as const),
+      content: row.content,
+    }));
+    let reply = localHelpReply(text, seat);
+    try {
+      const res = await fetch("/api/companion/agent", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, history, kind: "help" }),
+      });
+      const json = await res.json().catch(() => null);
+      if (typeof json?.reply === "string" && json.reply.trim()) reply = json.reply.trim();
+    } catch {
+      // local line already set
+    }
+    setHelpLog((prev) =>
+      [
+        ...prev,
+        { id: uid("me"), from: "me" as const, content: text },
+        { id: uid("them"), from: "them" as const, content: reply },
+      ].slice(-20),
+    );
   }
 
   async function sendNimbo(text: string) {
@@ -292,6 +325,10 @@ export function CompanionSurface() {
       void sendNimbo(text);
       return;
     }
+    if (kind === "help") {
+      void sendHelp(text);
+      return;
+    }
     if (!seat) return;
     sendDm(text);
   }
@@ -307,19 +344,56 @@ export function CompanionSurface() {
 
   function clickMochi() {
     if (!seat) return;
-    if (seat === "lulox") setOpenChat("human");
+    setOpenChat(roleForPetClick(seat, "mochi"));
   }
   function clickLulox() {
     if (!seat) return;
-    if (seat === "katho") setOpenChat("human");
+    setOpenChat(roleForPetClick(seat, "lulox"));
   }
   function clickNimbo() {
     if (!seat) return;
     setOpenChat("nimbo");
   }
 
+  const ownTint = seat === "katho" ? CHAT_WINDOWS.mochi : CHAT_WINDOWS.lulox;
+  const deskMode = phoneFoco ? "foco" : "desk";
+
+  useEffect(() => {
+    if (phoneFoco && (openChat === "human" || openChat === "help")) {
+      setOpenChat("nimbo");
+    }
+  }, [phoneFoco, openChat]);
+
   return (
-    <div className="companion-root companion-desk" data-companion-surface data-companion-desk>
+    <div
+      className="companion-root companion-desk"
+      data-companion-surface
+      data-companion-desk
+      data-desk-mode={deskMode}
+    >
+      {auth ? (
+        <div className="desk-faces" data-desk-faces>
+          <span
+            className="desk-face"
+            data-face="katho"
+            data-presence={pairPresence.katho}
+            data-dot={presenceDot(pairPresence.katho)}
+            title="Katho"
+          >
+            K
+          </span>
+          <span
+            className="desk-face"
+            data-face="lulox"
+            data-presence={pairPresence.lulox}
+            data-dot={presenceDot(pairPresence.lulox)}
+            title="Lulox"
+          >
+            L
+          </span>
+        </div>
+      ) : null}
+
       <CompanionPair
         view={togetherView}
         mochiWorking={false}
@@ -334,6 +408,9 @@ export function CompanionSurface() {
         onLuloxClick={clickLulox}
         onNimboClick={clickNimbo}
         scale={0.6}
+        showMochi={!phoneFoco}
+        showLulox={!phoneFoco}
+        showNimbo
       />
 
       {leave ? (
@@ -354,12 +431,22 @@ export function CompanionSurface() {
         </button>
       ) : null}
 
+      {auth ? (
+        <CompanionApps
+          board={board}
+          onRaAdd={(title) => void sendNimbo(`agregá ${title}`)}
+          onRaDone={(title) => void sendNimbo(`listo ${title}`)}
+          onFoco={setPhoneFoco}
+        />
+      ) : null}
+
       {auth === null ? <CompanionLogin onSession={setAuth} /> : null}
 
       {openChat === "human" && other && seat ? (
         <section
           className={`talk-window tint-${otherTint.colorName}`}
           data-talk-window="human"
+          data-talk-never-hide="true"
           data-tint={otherTint.colorName}
           role="dialog"
           aria-label={otherTint.label}
@@ -409,6 +496,7 @@ export function CompanionSurface() {
         <section
           className="talk-window tint-gold"
           data-talk-window="nimbo"
+          data-talk-never-hide="true"
           data-tint="gold"
           role="dialog"
           aria-label={nimboTint.label}
@@ -444,6 +532,56 @@ export function CompanionSurface() {
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="…"
                 aria-label="Mensaje para Nimbo"
+                autoComplete="off"
+              />
+              <button type="submit" disabled={!draft.trim()}>
+                ok
+              </button>
+            </form>
+          </div>
+        </section>
+      ) : null}
+
+      {openChat === "help" && seat ? (
+        <section
+          className={`talk-window tint-${ownTint.colorName}`}
+          data-talk-window="help"
+          data-talk-never-hide="true"
+          data-tint={ownTint.colorName}
+          role="dialog"
+          aria-label="Ayuda"
+          style={{ borderColor: ownTint.hex }}
+        >
+          <header className="talk-chrome" style={{ background: ownTint.chrome }}>
+            <span>ayuda</span>
+            <button type="button" className="talk-close" onClick={() => setOpenChat(null)} aria-label="Cerrar">
+              ×
+            </button>
+          </header>
+          <div className="talk-body">
+            <div className="talk-log">
+              {helpLog.length === 0 ? (
+                <p className="talk-empty">{localHelpReply("hola", seat)}</p>
+              ) : (
+                helpLog.map((row) => (
+                  <p key={row.id} className={`talk-line from-${row.from}`}>
+                    {row.content}
+                  </p>
+                ))
+              )}
+            </div>
+            <form
+              className="talk-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSend("help");
+              }}
+            >
+              <input
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="…"
+                aria-label="Pregunta de ayuda"
                 autoComplete="off"
               />
               <button type="submit" disabled={!draft.trim()}>

@@ -1,12 +1,13 @@
 /**
  * Three click-to-open windows: Mochi pink, Lulox cyan, Nimbo gold/gray.
  * Nimbo is the task pet: Ra list/add/move/done, pomodoro start/stop, add to the list.
- * Click the other person's pet for human chat.
+ * Own mascot = HELP. Other person's pet = human chat. Nimbo = IA.
  */
 
 import { parseRaIntent, type RaIntent } from "./trello";
-import { parseCompanionIntent } from "./companion-core";
+import { parseCompanionIntent, type PersonId } from "./companion-core";
 import { NIMBO_NAME } from "./llm";
+import type { SpritePackId } from "./shimeji-engine";
 
 export type ChatWindowId = "mochi" | "lulox" | "nimbo";
 
@@ -115,6 +116,62 @@ export const parseAppAgentIntent = parseNimboIntent;
 
 export function nimboCanDrive(intent: NimboIntent): boolean {
   return intent.type !== "chat";
+}
+
+export type PetClickRole = "human" | "help" | "nimbo";
+
+/**
+ * Seat lulox (gato): Mochi = human with Katho; gatito = HELP; Nimbo = IA.
+ * Seat katho: gatito = human with Lulox; her Mochi = HELP; Nimbo = IA.
+ */
+export function roleForPetClick(seat: PersonId, pack: SpritePackId): PetClickRole {
+  if (pack === "nimbo") return "nimbo";
+  if (seat === "lulox") return pack === "mochi" ? "human" : "help";
+  return pack === "lulox" ? "human" : "help";
+}
+
+export const HELP_SOUL = `Sos la ayuda del escritorio Compañera.
+Hablás en español rioplatense (vos, che, dale). Corto. Concreto.
+Katho es ella. Lulox es él. Los dos. Nada de lenguaje inclusivo.
+Explicá la app, no des discurso de producto.
+Hay tres bichos: Mochi (coneja de Katho), Lulox (gato ninja) y Nimbo (IA).
+Tu bicho te explica. El de la otra persona es el chat humano.
+Nimbo es Ra, el tomate y las tareas. No hay Trello embebido. Los bichos son el canal.
+Se arrastran y se pegan a la orilla más cerca: piso, paredes y techo.
+El botón Ra abre las miniapps. En el celu, escritorio = los tres; foco = solo Nimbo.
+Caritas: verde presente, amarillo idle, rojo desconectado.`;
+
+const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
+
+export function localHelpReply(userText: string, seat: PersonId): string {
+  const t = userText.toLowerCase();
+  const own = seat === "katho" ? "Mochi" : "Lulox";
+  const other = seat === "katho" ? "Lulox" : "Mochi";
+  if (INCLUSIVE.test(t)) return "Katho ella, Lulox él. Los dos.";
+  if (/\b(hola|holis|buenas|ayuda|help)\b/.test(t)) {
+    return `Hola. Soy ${own}. Te explico la app. ${other} es el chat humano. Nimbo es la IA de Ra.`;
+  }
+  if (/\b(nimbo|ia|ra|tarea|tomate|pomo)\b/.test(t)) {
+    return "Nimbo es la IA. Hablale de Ra, el tomate o una tarea. No hay tablero embebido de Trello.";
+  }
+  if (/\b(chat|humano|katho|lulox|recado|mensaje)\b/.test(t)) {
+    return `Tocá a ${other} para el chat humano. Tu bicho (${own}) es la ayuda.`;
+  }
+  if (/\b(arrastr|drag|pared|techo|piso|camin)\b/.test(t)) {
+    return "Arrastralos. Al soltar se pegan a la orilla más cerca y siguen: piso, pared, techo.";
+  }
+  if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono)\b/.test(t)) {
+    return "El botón Ra abre las apps. En el celu, escritorio son los tres; foco es solo Nimbo a pantalla.";
+  }
+  if (/\b(carita|presenc|verde|rojo|amarillo|desconect)\b/.test(t)) {
+    return "Caritas en el escritorio: verde presente, amarillo idle, rojo se fue.";
+  }
+  return `Soy ${own}, la ayuda. ${other} es el chat con la otra persona. Nimbo es Ra. Tocá y preguntá.`;
+}
+
+export function helpSystemMessages(seat: PersonId): { role: "system"; content: string }[] {
+  const who = seat === "katho" ? "Katho" : "Lulox";
+  return [{ role: "system", content: `${HELP_SOUL}\nEstás hablando con ${who}.` }];
 }
 
 /** @deprecated use nimboCanDrive */

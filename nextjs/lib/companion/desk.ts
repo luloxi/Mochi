@@ -8,6 +8,13 @@ import { NIMBO_NAME } from "./llm";
 
 export const BUBBLE_PLACEMENT = "above-head" as const;
 
+export const BUBBLE_PLACEMENT_BY_EDGE = {
+  floor: "above-head",
+  left: "beside-right",
+  right: "beside-left",
+  ceiling: "below-feet",
+} as const;
+
 export const DESK_CHARACTERS = [
   {
     id: "mochi" as const,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COMPANION_SESSION_COOKIE, restoreCompanionSession } from "@/lib/companion/auth";
-import { isRaNimboIntent, parseNimboIntent } from "@/lib/companion/chats";
+import { helpSystemMessages, isRaNimboIntent, localHelpReply, parseNimboIntent } from "@/lib/companion/chats";
 import {
   completeLlmChat,
   localNimboReply,
@@ -23,6 +23,36 @@ export async function POST(request: NextRequest) {
   const json = await request.json().catch(() => null);
   const text = typeof json?.text === "string" ? json.text.trim() : "";
   if (!text) return NextResponse.json({ error: "EMPTY" }, { status: 400 });
+
+  const kind = json?.kind === "help" ? "help" : "nimbo";
+  if (kind === "help") {
+    let reply = localHelpReply(text, session.personId);
+    const pick = pickLlmProvider();
+    if (pick.provider !== "none") {
+      const history = Array.isArray(json?.history)
+        ? (json.history as LlmChatMessage[])
+            .filter(
+              (row) =>
+                row &&
+                (row.role === "user" || row.role === "assistant") &&
+                typeof row.content === "string",
+            )
+            .slice(-8)
+        : [];
+      const llm = await completeLlmChat([
+        ...helpSystemMessages(session.personId),
+        ...history,
+        { role: "user", content: text },
+      ]).catch(() => ({ provider: pick.provider, text: "" as string }));
+      if (llm.text) reply = llm.text;
+    }
+    return NextResponse.json({
+      reply,
+      kind: "help",
+      did: "help",
+      provider: pick.provider,
+    });
+  }
 
   const intent = parseNimboIntent(text);
   let board = emptyRaBoard();

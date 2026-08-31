@@ -28,19 +28,23 @@ import {
 } from "./auth";
 import {
   CHAT_WINDOWS,
+  HELP_SOUL,
   appAgentCanDrive,
   chatWindowList,
+  localHelpReply,
   nimboCanDrive,
   parseAppAgentIntent,
   parseNimboIntent,
+  roleForPetClick,
 } from "./chats";
 import {
   BUBBLE_PLACEMENT,
+  BUBBLE_PLACEMENT_BY_EDGE,
   DESK_CHARACTERS,
   bubbleAboveHead,
   firstPaintViolations,
 } from "./desk";
-import { leaveSignalText } from "./presence";
+import { leaveSignalText, presenceDot } from "./presence";
 import {
   companionSyncApi,
   createMemorySyncStore,
@@ -279,7 +283,7 @@ describe("copy + llm + trello", () => {
     assert.equal(PEOPLE.lulox.pronoun, "él");
     assert.equal(PERSONAS.katho.pronoun, "ella");
     assert.equal(PERSONAS.lulox.pronoun, "él");
-    const soul = `${COMPANION_SOUL}\n${PERSONAS.katho.soul}\n${PERSONAS.lulox.soul}\n${NIMBO_SOUL}\n${boardLegendLine()}`;
+    const soul = `${COMPANION_SOUL}\n${PERSONAS.katho.soul}\n${PERSONAS.lulox.soul}\n${NIMBO_SOUL}\n${HELP_SOUL}\n${boardLegendLine()}`;
     assert.equal(INCLUSIVE.test(soul), false);
     assert.match(soul, /ella/);
     assert.match(soul, /él/);
@@ -292,6 +296,8 @@ describe("copy + llm + trello", () => {
     });
     assert.equal(INCLUSIVE.test(reply), false);
     assert.equal(INCLUSIVE.test(localNimboReply("hola")), false);
+    assert.equal(INCLUSIVE.test(localHelpReply("hola", "katho")), false);
+    assert.equal(INCLUSIVE.test(HELP_SOUL), false);
   });
 
   it("OPENAI first, then xAI, else none — vibes still work", () => {
@@ -426,6 +432,7 @@ describe("first paint desk + bubbles + in-app llm", () => {
   const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
   const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
   const pet = readFileSync(join(here, "../../components/companion/companion-pet.tsx"), "utf8");
+  const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
   const grokRoute = readFileSync(join(here, "../../app/api/companion/grok/route.ts"), "utf8");
   const agentRoute = readFileSync(join(here, "../../app/api/companion/agent/route.ts"), "utf8");
 
@@ -446,11 +453,28 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.doesNotMatch(surface, /<iframe/i);
     assert.doesNotMatch(surface, /trello\.com\/b/);
     assert.doesNotMatch(surface, /data-ra-board/);
+    assert.doesNotMatch(apps, /trello\.com\/b/);
+    assert.doesNotMatch(apps, /trello\.com\/embed/i);
+    assert.doesNotMatch(apps, /<iframe[^>]+trello/i);
+    assert.match(surface, /data-desk-faces/);
+    assert.match(surface, /data-ra-launcher|CompanionApps/);
+    assert.match(surface, /data-talk-never-hide/);
+    assert.match(apps, /data-ra-launcher/);
+    assert.match(apps, /miniapp-full/);
+    assert.match(apps, /miniapp-window/);
+    assert.match(css, /\.miniapp-full[\s\S]*100dvh/);
   });
 
   it("bubbles sit above mascot heads, not a giant form", () => {
     assert.equal(BUBBLE_PLACEMENT, "above-head");
-    assert.match(pet, /data-bubble-placement="above-head"/);
+    assert.equal(BUBBLE_PLACEMENT_BY_EDGE.floor, "above-head");
+    assert.equal(BUBBLE_PLACEMENT_BY_EDGE.left, "beside-right");
+    assert.equal(BUBBLE_PLACEMENT_BY_EDGE.right, "beside-left");
+    assert.equal(BUBBLE_PLACEMENT_BY_EDGE.ceiling, "below-feet");
+    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m\.edge\)\}/);
+    assert.match(pet, /spriteOrientTransform\(m\.edge\)/);
+    assert.match(pet, /mascotDrawTransform\(\)/);
+    assert.match(pet, /data-no-flip="true"/);
     assert.match(pet, /className="mascot-bubble"/);
     assert.match(css, /\.mascot-bubble/);
     assert.match(css, /width:\s*max-content/);
@@ -511,8 +535,22 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.match(surface, /data-leave-signal/);
     assert.match(pet, /onNimboClick/);
     assert.match(pet, /pack="nimbo"/);
-    assert.match(surface, /clickLulox|seat === "katho"/);
-    assert.match(surface, /clickMochi|seat === "lulox"/);
+    assert.match(surface, /clickLulox|roleForPetClick\(seat, "lulox"\)/);
+    assert.match(surface, /clickMochi|roleForPetClick\(seat, "mochi"\)/);
+    assert.equal(roleForPetClick("lulox", "mochi"), "human");
+    assert.equal(roleForPetClick("lulox", "lulox"), "help");
+    assert.equal(roleForPetClick("lulox", "nimbo"), "nimbo");
+    assert.equal(roleForPetClick("katho", "lulox"), "human");
+    assert.equal(roleForPetClick("katho", "mochi"), "help");
+    assert.equal(roleForPetClick("katho", "nimbo"), "nimbo");
+    assert.match(localHelpReply("hola", "lulox"), /Lulox|ayuda|Nimbo/i);
+    assert.match(localHelpReply("hola", "katho"), /Mochi|ayuda|Nimbo/i);
+    assert.equal(presenceDot("present"), "green");
+    assert.equal(presenceDot("idle-away"), "yellow");
+    assert.equal(presenceDot("logout"), "red");
+    assert.equal(presenceDot("close"), "red");
+    assert.match(pet, /bias=\{null\}/);
+    assert.match(pet, /bias=\{zones \?/);
     const hereSprites = join(dirname(fileURLToPath(import.meta.url)), "../../public/sprites");
     assert.equal(existsSync(join(hereSprites, "nimbo/stand-neutral.png")), true);
     assert.equal(existsSync(join(hereSprites, "mochi/stand-neutral.png")), true);

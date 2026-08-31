@@ -1,11 +1,12 @@
 /**
  * Companion wander runtime for Katho's Mochi (chrome-extension/characters/mochi).
- * Served from /sprites/mochi/. This set has no climb-wall frames — don't invent climb.
- * Available: stand-neutral, walk-step-left/right, sit-edge-*, sit-pc-edge-*,
- * spin-head-frame-1..6, sprawl-lying, icon.
+ * Served from /sprites/mochi/. Walk sprites only — no climb-wall frames.
+ * Pets walk the FULL desk perimeter (floor, walls, ceiling). At a corner they
+ * continue onto the next edge. The .companion-mascot button is never rotated
+ * (that would verticalize bubble text). Canvas sprite may be oriented.
  *
- * Facing is expressed by moving the star to the leading eye (see star-eye.ts),
- * never by scaleX(-1), so the red/yellow cloak stays put.
+ * Facing on the floor is the star in the leading eye (see star-eye.ts),
+ * never scaleX(-1), so the red/yellow cloak stays put.
  */
 
 export const SPRITE_SIZE = 128;
@@ -16,6 +17,11 @@ export const NIMBO_SPRITE_BASE = "/sprites/nimbo/";
 export const COORD_SPRITE_BASE = NIMBO_SPRITE_BASE;
 
 export type SpritePackId = "mochi" | "lulox" | "nimbo";
+
+/** Clockwise around the room: floor → right wall → ceiling → left wall → floor. */
+export type DeskEdge = "floor" | "left" | "right" | "ceiling";
+
+export type BubblePlacement = "above-head" | "beside-right" | "beside-left" | "below-feet";
 
 export const PHYSICS = {
   gravity: 2,
@@ -128,43 +134,17 @@ function walkCycleName(facingRight: boolean) {
   return facingRight ? "walkingRight" : "walkingLeft";
 }
 
-/** Switch left/right walk clip without resetting the frame clock. */
-function setWalkDirection(m: ShimejiMascot, facingRight: boolean) {
-  m.facingRight = facingRight;
-  m.direction = facingRight ? 1 : -1;
-  const next = walkCycleName(facingRight);
-  if (m.state === State.WALKING && m.currentAnimation !== next) {
-    m.currentAnimation = next;
-  }
-}
+export type Bounds = { width: number; height: number };
 
-export function spriteUrl(key: string, pack: SpritePackId = "mochi"): string {
-  if (pack === "lulox") {
-    const file = LULOX_SPRITES[key] || LULOX_SPRITES["stand-neutral"];
-    return `${LULOX_SPRITE_BASE}${file}`;
-  }
-  if (pack === "nimbo") {
-    const file = SPRITES[key] || SPRITES["stand-neutral"];
-    return `${NIMBO_SPRITE_BASE}${file}`;
-  }
-  const file = SPRITES[key] || SPRITES["stand-neutral"];
-  return `${SPRITE_BASE}${file}`;
-}
+export type Perch = { x: number; y: number };
 
-export function startWalking(m: ShimejiMascot, facingRight: boolean) {
-  setWalkDirection(m, facingRight);
-  setAnim(m, State.WALKING, walkCycleName(facingRight));
-}
-
-export function sitAtPcSpriteKeys(): string[] {
-  return ["sit-pc-edge-legs-down", "sit-pc-edge-dangle-frame-1", "sit-pc-edge-dangle-frame-2"];
-}
-
-export function isSitPcSprite(key: string): boolean {
-  return sitAtPcSpriteKeys().includes(key);
-}
-
-export const PREFETCH_SPRITE_KEYS = Object.keys(SPRITES);
+export type WanderBias = {
+  xMin: number;
+  xMax: number;
+  gatherX?: number;
+  facingRight?: boolean;
+  pose?: "kiss" | "hop" | "walk-together" | "idle-chat" | "separate" | "idle";
+};
 
 export type ShimejiMascot = {
   x: number;
@@ -172,6 +152,7 @@ export type ShimejiMascot = {
   velocityX: number;
   velocityY: number;
   state: ShimejiState;
+  /** +1 clockwise around the room, -1 counterclockwise. */
   facingRight: boolean;
   direction: number;
   currentAnimation: string;
@@ -192,18 +173,8 @@ export type ShimejiMascot = {
   spriteKey: string;
   transform: string;
   forceWorking: boolean;
-};
-
-export type Bounds = { width: number; height: number };
-
-export type Perch = { x: number; y: number };
-
-export type WanderBias = {
-  xMin: number;
-  xMax: number;
-  gatherX?: number;
-  facingRight?: boolean;
-  pose?: "kiss" | "hop" | "walk-together" | "idle-chat" | "separate" | "idle";
+  edge: DeskEdge;
+  flockId: string;
 };
 
 function animDuration(name: string): number {
@@ -219,6 +190,132 @@ function setAnim(m: ShimejiMascot, state: ShimejiState, animation: string) {
   m.animationTick = 0;
   m.stateTimer = 0;
 }
+
+export function edgeBounds(bounds: Bounds, scale: number) {
+  const size = SPRITE_SIZE * scale;
+  return {
+    size,
+    left: 0,
+    right: Math.max(0, bounds.width - size),
+    floor: bounds.height,
+    ceiling: size,
+  };
+}
+
+/** Button stays unrotated. Canvas sprite orients feet toward the current edge. */
+export function spriteOrientTransform(edge: DeskEdge): string {
+  if (edge === "left") return "rotate(90deg)";
+  if (edge === "right") return "rotate(-90deg)";
+  if (edge === "ceiling") return "rotate(180deg)";
+  return "none";
+}
+
+export function bubblePlacementForEdge(edge: DeskEdge): BubblePlacement {
+  if (edge === "left") return "beside-right";
+  if (edge === "right") return "beside-left";
+  if (edge === "ceiling") return "below-feet";
+  return "above-head";
+}
+
+export function nearestEdge(x: number, y: number, bounds: Bounds, scale: number): DeskEdge {
+  const e = edgeBounds(bounds, scale);
+  const distFloor = Math.abs(y - e.floor);
+  const distCeil = Math.abs(y - e.ceiling);
+  const distLeft = Math.abs(x - e.left);
+  const distRight = Math.abs(x - e.right);
+  let edge: DeskEdge = "floor";
+  let best = distFloor;
+  if (distLeft < best) {
+    edge = "left";
+    best = distLeft;
+  }
+  if (distRight < best) {
+    edge = "right";
+    best = distRight;
+  }
+  if (distCeil < best) {
+    edge = "ceiling";
+  }
+  return edge;
+}
+
+export function snapToNearestEdge(m: ShimejiMascot, bounds: Bounds, scale: number) {
+  const e = edgeBounds(bounds, scale);
+  const edge = nearestEdge(m.x, m.y, bounds, scale);
+  m.edge = edge;
+  m.x = Math.max(e.left, Math.min(m.x, e.right));
+  m.y = Math.max(e.ceiling, Math.min(m.y, e.floor));
+  pinToEdge(m, bounds, scale);
+}
+
+function pinToEdge(m: ShimejiMascot, bounds: Bounds, scale: number) {
+  const e = edgeBounds(bounds, scale);
+  if (m.edge === "floor") m.y = e.floor;
+  else if (m.edge === "ceiling") m.y = e.ceiling;
+  else if (m.edge === "left") m.x = e.left;
+  else m.x = e.right;
+  m.x = Math.max(e.left, Math.min(m.x, e.right));
+  m.y = Math.max(e.ceiling, Math.min(m.y, e.floor));
+}
+
+function syncFacingFromDirection(m: ShimejiMascot) {
+  if (m.edge === "floor") m.facingRight = m.direction >= 0;
+  else if (m.edge === "ceiling") m.facingRight = m.direction < 0;
+  else if (m.edge === "left") m.facingRight = false;
+  else m.facingRight = true;
+  const next = walkCycleName(m.facingRight);
+  if (m.state === State.WALKING && m.currentAnimation !== next) {
+    m.currentAnimation = next;
+  }
+}
+
+/** Switch left/right walk clip without resetting the frame clock. */
+function setWalkDirection(m: ShimejiMascot, facingRight: boolean) {
+  m.facingRight = facingRight;
+  if (m.edge === "ceiling") m.direction = facingRight ? -1 : 1;
+  else if (m.edge === "right") m.direction = facingRight ? 1 : -1;
+  else m.direction = facingRight ? 1 : -1;
+  const next = walkCycleName(facingRight);
+  if (m.state === State.WALKING && m.currentAnimation !== next) {
+    m.currentAnimation = next;
+  }
+}
+
+export function spriteUrl(key: string, pack: SpritePackId = "mochi"): string {
+  if (pack === "lulox") {
+    const file = LULOX_SPRITES[key] || LULOX_SPRITES["stand-neutral"];
+    return `${LULOX_SPRITE_BASE}${file}`;
+  }
+  if (pack === "nimbo") {
+    const file = SPRITES[key] || SPRITES["stand-neutral"];
+    return `${NIMBO_SPRITE_BASE}${file}`;
+  }
+  const file = SPRITES[key] || SPRITES["stand-neutral"];
+  return `${SPRITE_BASE}${file}`;
+}
+
+export function startWalking(m: ShimejiMascot, facingRight: boolean) {
+  if (!m.edge) m.edge = "floor";
+  setWalkDirection(m, facingRight);
+  setAnim(m, State.WALKING, walkCycleName(facingRight));
+}
+
+export function startWalkingOnEdge(m: ShimejiMascot, edge: DeskEdge, clockwise: boolean) {
+  m.edge = edge;
+  m.direction = clockwise ? 1 : -1;
+  syncFacingFromDirection(m);
+  setAnim(m, State.WALKING, walkCycleName(m.facingRight));
+}
+
+export function sitAtPcSpriteKeys(): string[] {
+  return ["sit-pc-edge-legs-down", "sit-pc-edge-dangle-frame-1", "sit-pc-edge-dangle-frame-2"];
+}
+
+export function isSitPcSprite(key: string): boolean {
+  return sitAtPcSpriteKeys().includes(key);
+}
+
+export const PREFETCH_SPRITE_KEYS = Object.keys(SPRITES);
 
 export function createMascot(bounds: Bounds, scale: number): ShimejiMascot {
   const size = SPRITE_SIZE * scale;
@@ -249,6 +346,8 @@ export function createMascot(bounds: Bounds, scale: number): ShimejiMascot {
     spriteKey: "stand-neutral",
     transform: "none",
     forceWorking: false,
+    edge: "floor",
+    flockId: `pet-${Math.random().toString(36).slice(2, 8)}`,
   };
 }
 
@@ -259,6 +358,7 @@ export function createWorkingMascot(): ShimejiMascot {
   m.x = 20;
   m.y = SPRITE_SIZE * 0.7;
   m.facingRight = false;
+  m.edge = "floor";
   return m;
 }
 
@@ -270,6 +370,7 @@ function currentFrame(m: ShimejiMascot): AnimFrame {
 function tickWorking(m: ShimejiMascot, perch: Perch | null, size: number) {
   m.velocityX = 0;
   m.velocityY = 0;
+  m.edge = "floor";
   if (perch) {
     m.x = perch.x;
     m.y = perch.y;
@@ -286,11 +387,59 @@ function tickWorking(m: ShimejiMascot, perch: Perch | null, size: number) {
   m.y = Math.max(m.y, size);
 }
 
+/** Continue onto the next edge instead of bouncing in a floor strip. */
+function continueAtCorner(m: ShimejiMascot, bounds: Bounds, scale: number) {
+  const e = edgeBounds(bounds, scale);
+  const clockwise = m.direction >= 0;
+  if (m.edge === "floor") {
+    if (clockwise && m.x >= e.right) {
+      m.x = e.right;
+      m.edge = "right";
+    } else if (!clockwise && m.x <= e.left) {
+      m.x = e.left;
+      m.edge = "left";
+    }
+  } else if (m.edge === "right") {
+    if (clockwise && m.y <= e.ceiling) {
+      m.y = e.ceiling;
+      m.edge = "ceiling";
+    } else if (!clockwise && m.y >= e.floor) {
+      m.y = e.floor;
+      m.edge = "floor";
+    }
+  } else if (m.edge === "ceiling") {
+    if (clockwise && m.x <= e.left) {
+      m.x = e.left;
+      m.edge = "left";
+    } else if (!clockwise && m.x >= e.right) {
+      m.x = e.right;
+      m.edge = "right";
+    }
+  } else if (m.edge === "left") {
+    if (clockwise && m.y >= e.floor) {
+      m.y = e.floor;
+      m.edge = "floor";
+    } else if (!clockwise && m.y <= e.ceiling) {
+      m.y = e.ceiling;
+      m.edge = "ceiling";
+    }
+  }
+  pinToEdge(m, bounds, scale);
+  syncFacingFromDirection(m);
+}
+
+function stepAlongEdge(m: ShimejiMascot, bounds: Bounds, scale: number) {
+  const speed = PHYSICS.walkSpeed * (m.direction === 0 ? 1 : m.direction);
+  if (m.edge === "floor") m.x += speed;
+  else if (m.edge === "right") m.y -= speed;
+  else if (m.edge === "ceiling") m.x -= speed;
+  else m.y += speed;
+  continueAtCorner(m, bounds, scale);
+}
+
 function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Perch | null) {
   const size = SPRITE_SIZE * scale;
-  const groundY = bounds.height;
-  const leftBound = 0;
-  const rightBound = Math.max(0, bounds.width - size);
+  const e = edgeBounds(bounds, scale);
 
   if (m.isDragging) {
     m.spriteKey = "stand-neutral";
@@ -306,14 +455,11 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
   switch (m.state) {
     case State.IDLE:
       m.stateTimer++;
-      m.y = groundY;
+      pinToEdge(m, bounds, scale);
       if (m.stateTimer > 40 && Math.random() < 0.03) {
         const roll = Math.random();
         if (roll < 0.58) {
-          const facingRight = Math.random() > 0.5;
-          m.direction = facingRight ? 1 : -1;
-          m.facingRight = facingRight;
-          setAnim(m, State.WALKING, walkCycleName(facingRight));
+          startWalkingOnEdge(m, m.edge || "floor", Math.random() > 0.5);
         } else if (roll < 0.78) {
           setAnim(m, State.SITTING_EDGE, "sittingEdge");
         } else if (roll < 0.9) {
@@ -326,25 +472,8 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
 
     case State.WALKING:
       m.stateTimer++;
-      m.x += PHYSICS.walkSpeed * m.direction;
-      m.y = groundY;
-      if (m.x <= leftBound) {
-        m.x = leftBound;
-        if (Math.random() < 0.35) {
-          setAnim(m, State.SITTING_EDGE, "sittingEdge");
-          m.facingRight = true;
-          break;
-        }
-        setWalkDirection(m, true);
-      } else if (m.x >= rightBound) {
-        m.x = rightBound;
-        if (Math.random() < 0.35) {
-          setAnim(m, State.SITTING_EDGE, "sittingEdge");
-          m.facingRight = false;
-          break;
-        }
-        setWalkDirection(m, false);
-      }
+      if (m.direction === 0) m.direction = m.facingRight ? 1 : -1;
+      stepAlongEdge(m, bounds, scale);
       if (m.stateTimer > 50 && Math.random() < 0.012) {
         setAnim(m, State.IDLE, "idle");
         m.direction = 0;
@@ -356,39 +485,40 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
       m.velocityY = Math.min(m.velocityY, PHYSICS.fallTerminalVelocity);
       m.y += m.velocityY;
       m.x += m.velocityX;
-      if (m.x <= leftBound) {
-        m.x = leftBound;
+      if (m.x <= e.left) {
+        m.x = e.left;
         m.velocityX = Math.abs(m.velocityX);
         m.facingRight = true;
       }
-      if (m.x >= rightBound) {
-        m.x = rightBound;
+      if (m.x >= e.right) {
+        m.x = e.right;
         m.velocityX = -Math.abs(m.velocityX);
         m.facingRight = false;
       }
-      if (m.y >= groundY) {
-        m.y = groundY;
+      if (m.y >= e.floor) {
+        m.y = e.floor;
         m.velocityY = 0;
         m.velocityX = 0;
+        m.edge = "floor";
         setAnim(m, State.SPRAWLED, "sprawled");
       }
       break;
 
     case State.SPRAWLED:
       m.stateTimer++;
-      m.y = groundY;
+      pinToEdge(m, bounds, scale);
       if (m.stateTimer > 80 && Math.random() < 0.03) setAnim(m, State.IDLE, "idle");
       break;
 
     case State.HEAD_SPIN:
       m.stateTimer++;
-      m.y = groundY;
+      pinToEdge(m, bounds, scale);
       if (m.stateTimer >= animDuration("headSpin")) setAnim(m, State.IDLE, "idle");
       break;
 
     case State.SITTING_EDGE:
       m.stateTimer++;
-      m.y = groundY;
+      pinToEdge(m, bounds, scale);
       if (m.stateTimer > 160 && Math.random() < 0.02) setAnim(m, State.IDLE, "idle");
       break;
 
@@ -400,8 +530,6 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
     case State.DRAGGED:
       break;
   }
-
-  m.x = Math.max(leftBound, Math.min(m.x, rightBound));
 }
 
 function updateAnimation(m: ShimejiMascot) {
@@ -433,35 +561,143 @@ function updateAnimation(m: ShimejiMascot) {
   m.transform = "none";
 }
 
+function isGatherPose(pose: WanderBias["pose"] | undefined) {
+  return pose === "kiss" || pose === "hop" || pose === "walk-together" || pose === "idle-chat";
+}
+
 function applyWanderBias(m: ShimejiMascot, bounds: Bounds, scale: number, bias: WanderBias) {
-  const size = SPRITE_SIZE * scale;
+  if (m.isDragging || m.forceWorking) return;
+  if (!isGatherPose(bias.pose)) return;
+  const e = edgeBounds(bounds, scale);
+  m.edge = "floor";
+  m.y = e.floor;
   const xMin = Math.max(0, bias.xMin);
-  const xMax = Math.max(xMin, Math.min(bounds.width - size, bias.xMax - size));
+  const xMax = Math.max(xMin, Math.min(e.right, bias.xMax - scale * SPRITE_SIZE));
   if (m.x < xMin) {
     m.x = xMin;
-    if (m.state === State.WALKING) setWalkDirection(m, true);
+    if (m.state === State.WALKING) startWalking(m, true);
   }
   if (m.x > xMax) {
     m.x = xMax;
-    if (m.state === State.WALKING) setWalkDirection(m, false);
+    if (m.state === State.WALKING) startWalking(m, false);
   }
-  if (m.isDragging || m.forceWorking) return;
   if (bias.gatherX != null) {
     const target = Math.max(xMin, Math.min(xMax, bias.gatherX));
     const dx = target - m.x;
     if (Math.abs(dx) > 6) {
       startWalking(m, dx > 0);
-    } else if (bias.pose === "kiss" || bias.pose === "idle-chat" || bias.pose === "separate") {
+    } else if (bias.pose === "kiss" || bias.pose === "idle-chat") {
       if (m.state === State.WALKING) setAnim(m, State.IDLE, "idle");
       m.direction = 0;
       if (bias.facingRight != null) m.facingRight = bias.facingRight;
     }
   }
-  if (bias.pose === "walk-together" && m.state !== State.WALKING && !m.isDragging) {
+  if (bias.pose === "walk-together" && m.state !== State.WALKING) {
     startWalking(m, bias.facingRight ?? true);
   }
   if (bias.facingRight != null && (bias.pose === "kiss" || bias.pose === "idle-chat")) {
     m.facingRight = bias.facingRight;
+  }
+}
+
+type FlockEntry = { m: ShimejiMascot; scale: number };
+const flock = new Map<string, FlockEntry>();
+
+export function registerPet(m: ShimejiMascot, scale: number) {
+  if (!m.flockId) m.flockId = `pet-${Math.random().toString(36).slice(2, 8)}`;
+  flock.set(m.flockId, { m, scale });
+}
+
+export function unregisterPet(m: ShimejiMascot) {
+  flock.delete(m.flockId);
+}
+
+export function clearFlock() {
+  flock.clear();
+}
+
+function freeAxisDelta(m: ShimejiMascot): number {
+  if (m.state !== State.WALKING) return 0;
+  const s = PHYSICS.walkSpeed * (m.direction === 0 ? 1 : m.direction);
+  if (m.edge === "floor") return s;
+  if (m.edge === "ceiling") return -s;
+  if (m.edge === "left") return s;
+  return -s;
+}
+
+function reverseAlong(m: ShimejiMascot) {
+  m.direction = m.direction === 0 ? -1 : -m.direction;
+  syncFacingFromDirection(m);
+}
+
+export function collideMascots(a: ShimejiMascot, scaleA: number, b: ShimejiMascot, scaleB: number): boolean {
+  if (a.isDragging || b.isDragging) return false;
+  if (a.forceWorking || b.forceWorking) return false;
+  const A = mascotDrawBox(a, scaleA);
+  const B = mascotDrawBox(b, scaleB);
+  const overlapX = Math.min(A.left + A.size, B.left + B.size) - Math.max(A.left, B.left);
+  const overlapY = Math.min(A.top + A.size, B.top + B.size) - Math.max(A.top, B.top);
+  if (overlapX <= 0 || overlapY <= 0) return false;
+
+  const same = a.edge === b.edge;
+  if (same && (a.edge === "floor" || a.edge === "ceiling")) {
+    const aLeft = a.x <= b.x;
+    const push = Math.max(6, overlapX / 2 + 2);
+    if (aLeft) {
+      a.x -= push / 2;
+      b.x += push / 2;
+      if (freeAxisDelta(a) > 0) reverseAlong(a);
+      if (freeAxisDelta(b) < 0) reverseAlong(b);
+    } else {
+      a.x += push / 2;
+      b.x -= push / 2;
+      if (freeAxisDelta(a) < 0) reverseAlong(a);
+      if (freeAxisDelta(b) > 0) reverseAlong(b);
+    }
+  } else if (same && (a.edge === "left" || a.edge === "right")) {
+    const aAbove = a.y <= b.y;
+    const push = Math.max(6, overlapY / 2 + 2);
+    if (aAbove) {
+      a.y -= push / 2;
+      b.y += push / 2;
+      if (freeAxisDelta(a) > 0) reverseAlong(a);
+      if (freeAxisDelta(b) < 0) reverseAlong(b);
+    } else {
+      a.y += push / 2;
+      b.y -= push / 2;
+      if (freeAxisDelta(a) < 0) reverseAlong(a);
+      if (freeAxisDelta(b) > 0) reverseAlong(b);
+    }
+  } else if (overlapX < overlapY) {
+    if (A.left < B.left) {
+      a.x -= overlapX / 2 + 2;
+      b.x += overlapX / 2 + 2;
+    } else {
+      a.x += overlapX / 2 + 2;
+      b.x -= overlapX / 2 + 2;
+    }
+    reverseAlong(a);
+    reverseAlong(b);
+  } else {
+    if (A.top < B.top) {
+      a.y -= overlapY / 2 + 2;
+      b.y += overlapY / 2 + 2;
+    } else {
+      a.y += overlapY / 2 + 2;
+      b.y -= overlapY / 2 + 2;
+    }
+    reverseAlong(a);
+    reverseAlong(b);
+  }
+  return true;
+}
+
+export function resolveFlockCollisions() {
+  const pets = [...flock.values()];
+  for (let i = 0; i < pets.length; i++) {
+    for (let j = i + 1; j < pets.length; j++) {
+      collideMascots(pets[i].m, pets[i].scale, pets[j].m, pets[j].scale);
+    }
   }
 }
 
@@ -475,6 +711,7 @@ export function tickShimeji(
 ) {
   updateState(m, bounds, scale, perch);
   if (bias) applyWanderBias(m, bounds, scale, bias);
+  resolveFlockCollisions();
   updateAnimation(m);
 }
 
@@ -526,19 +763,21 @@ export function moveDrag(
   if (Math.abs(dragDelta) > 0.4) m.facingRight = dragDelta > 0;
 }
 
-export function endDrag(m: ShimejiMascot) {
+export function endDrag(m: ShimejiMascot, bounds?: Bounds, scale = 1) {
   if (m.dragPending) {
     m.dragPending = false;
     return "click" as const;
   }
   if (!m.isDragging) return "none" as const;
   m.isDragging = false;
-  const throwScale = 0.22;
-  const maxThrow = 16;
-  m.velocityX = Math.max(-maxThrow, Math.min(maxThrow, m.smoothedVelocityX * throwScale));
-  m.velocityY = Math.max(-maxThrow, Math.min(maxThrow, m.smoothedVelocityY * throwScale));
-  if (m.velocityX !== 0) m.facingRight = m.velocityX > 0;
-  setAnim(m, State.FALLING, "falling");
+  m.velocityX = 0;
+  m.velocityY = 0;
+  m.smoothedVelocityX = 0;
+  m.smoothedVelocityY = 0;
+  const box = bounds ?? { width: Math.max(320, m.x + SPRITE_SIZE), height: Math.max(240, m.y) };
+  snapToNearestEdge(m, box, scale);
+  const clockwise = m.edge === "floor" || m.edge === "right" ? m.facingRight : !m.facingRight;
+  startWalkingOnEdge(m, m.edge, clockwise);
   return "drop" as const;
 }
 
@@ -546,6 +785,7 @@ export function setWorking(m: ShimejiMascot, working: boolean) {
   if (working === m.forceWorking) return;
   m.forceWorking = working;
   if (working) {
+    m.edge = "floor";
     setAnim(m, State.SITTING_PC, "sittingPc");
   } else if (!m.isDragging) {
     setAnim(m, State.IDLE, "idle");

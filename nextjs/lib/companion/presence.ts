@@ -119,7 +119,16 @@ export function nextTogetherTick(input: {
   };
 }
 
-/** Spatial split so Katho can see someone left without a lecture. */
+export type PresenceDot = "green" | "yellow" | "red";
+
+/** Desk faces: green present, yellow idle/away, red disconnected. */
+export function presenceDot(status: PresenceStatus): PresenceDot {
+  if (status === "present") return "green";
+  if (status === "idle-away") return "yellow";
+  return "red";
+}
+
+/** Together-gather only. Default wander is the full perimeter — do not pin to floor strips. */
 export function deskZones(
   mode: "together" | "separate",
   action: TogetherAction | "idle" | "separate",
