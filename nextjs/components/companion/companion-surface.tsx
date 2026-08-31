@@ -130,6 +130,7 @@ export function CompanionSurface() {
   const [otherTyping, setOtherTyping] = useState(false);
   const typingSentAt = useRef(0);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [nimboLines, setNimboLines] = useState<string[]>([]);
   const [nimboLog, setNimboLog] = useState<TalkMsg[]>([]);
   const [helpLog, setHelpLog] = useState<TalkMsg[]>([]);
@@ -514,6 +515,19 @@ export function CompanionSurface() {
     }
   }, [phoneFoco, openChat]);
 
+  /** Click en Katho, Lulox o Nimbo deja el cursor en el input (no solo autoFocus). */
+  useEffect(() => {
+    if (!openChat) return;
+    const focus = () => inputRef.current?.focus();
+    focus();
+    const id = window.requestAnimationFrame(focus);
+    const t = window.setTimeout(focus, 40);
+    return () => {
+      window.cancelAnimationFrame(id);
+      window.clearTimeout(t);
+    };
+  }, [openChat]);
+
   return (
     <div
       className="companion-root companion-desk"
@@ -753,6 +767,7 @@ export function CompanionSurface() {
                 autoComplete="off"
                 autoFocus
                 data-talk-input
+                ref={inputRef}
               />
               <button type="submit" disabled={!draft.trim()}>
                 ok
@@ -805,6 +820,7 @@ export function CompanionSurface() {
                 autoComplete="off"
                 autoFocus
                 data-talk-input
+                ref={inputRef}
               />
               <button type="submit" disabled={!draft.trim()}>
                 ok
@@ -855,6 +871,7 @@ export function CompanionSurface() {
                 autoComplete="off"
                 autoFocus
                 data-talk-input
+                ref={inputRef}
               />
               <button type="submit" disabled={!draft.trim()}>
                 ok

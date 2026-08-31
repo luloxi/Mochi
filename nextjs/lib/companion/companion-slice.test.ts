@@ -1305,6 +1305,9 @@ describe("chat sits above the pets and behaves", () => {
     const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
     assert.match(surface, /data-talk-input/);
     assert.match(surface, /autoFocus/);
+    assert.match(surface, /inputRef\.current\?\.focus/);
+    assert.match(surface, /clickNimbo/);
+    assert.match(surface, /clickLulox/);
     assert.match(surface, /log\.scrollTop = log\.scrollHeight/);
     assert.match(css, /\.talk-log\s*\{[^}]*flex:\s*1 1 auto/);
     assert.doesNotMatch(css, /\.talk-log\s*\{[^}]*max-height:\s*18vh/);
