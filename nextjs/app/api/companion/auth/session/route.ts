@@ -4,6 +4,7 @@ import {
   restoreCompanionSession,
   sessionCookieOptions,
   encodeCompanionSession,
+  publicCompanionSession,
 } from "@/lib/companion/auth";
 
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
     response.cookies.delete(COMPANION_SESSION_COOKIE);
     return response;
   }
-  const response = NextResponse.json({ session });
+  const response = NextResponse.json({ session: publicCompanionSession(session) });
   response.cookies.set(COMPANION_SESSION_COOKIE, encodeCompanionSession(session), sessionCookieOptions());
   return response;
 }

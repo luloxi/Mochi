@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
+  COMPANION_OPEN_RA,
   RA_APPS,
   addTodoItem,
   applyNimboClock,
@@ -12,12 +14,14 @@ import {
   saveOpenApps,
   saveTodos,
   saveVideoUrl,
+  type PersonId,
   type RaAppId,
   type TodoItem,
 } from "@/lib/companion/companion-core";
+import { FEEL_COLOR_IDS, type FeelColor } from "@/lib/companion/boards";
 import { RADIO_STATIONS, radioStationById, type RadioStationId } from "@/lib/companion/radio";
 import { extractYouTubeId, youtubeEmbedUrl } from "@/lib/companion/youtube";
-import { emptyRaBoard, type RaBoard } from "@/lib/companion/trello";
+import { emptyRaBoard, raConnectWizard, type RaBoard } from "@/lib/companion/trello";
 
 type WinPos = { id: RaAppId; x: number; y: number; z: number };
 
@@ -271,54 +275,243 @@ function RuidoPane() {
   );
 }
 
+type RaDrag = {
+  cardId: string;
+  name: string;
+  feel: string;
+  x: number;
+  y: number;
+  grabX: number;
+  grabY: number;
+  overListId: string | null;
+  overArchive: boolean;
+};
+
+function RaWizard({
+  seat,
+  authorizeUrl,
+}: {
+  seat: PersonId;
+  authorizeUrl: string | null;
+}) {
+  const copy = raConnectWizard(seat);
+  return (
+    <div className="ra-wizard" data-ra-wizard>
+      <p className="miniapp-kicker">Ra</p>
+      <ol className="ra-wizard-steps">
+        {copy.steps.map((step) => (
+          <li key={step.n} data-ra-step={step.n}>
+            <span className="ra-wizard-n">{step.n}</span>
+            <div>
+              <strong>{step.title}</strong>
+              <p>{step.body}</p>
+              {step.n === 2 ? (
+                authorizeUrl ? (
+                  <a className="ra-connect" data-ra-connect href={authorizeUrl}>
+                    {copy.connectLabel}
+                  </a>
+                ) : (
+                  <button type="button" className="ra-connect" data-ra-connect disabled>
+                    {copy.connectLabel}
+                  </button>
+                )
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function RaPane({
   board,
+  seat,
+  authorizeUrl,
   onAdd,
+  onMove,
   onDone,
+  onColor,
+  onArchive,
 }: {
   board: RaBoard;
-  onAdd: (title: string) => void;
-  onDone: (title: string) => void;
+  seat: PersonId;
+  authorizeUrl: string | null;
+  onAdd: (title: string, listId?: string) => void;
+  onMove: (cardId: string, listId: string) => void;
+  onDone: (cardId: string) => void;
+  onColor: (cardId: string, color: FeelColor) => void;
+  onArchive: (cardId: string) => void;
 }) {
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drag, setDrag] = useState<RaDrag | null>(null);
+  const colRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const dragRef = useRef<RaDrag | null>(null);
+
+  useEffect(() => {
+    dragRef.current = drag;
+  }, [drag]);
+
+  if (!board.configured) {
+    return (
+      <div className="miniapp-body" data-miniapp="boards">
+        <RaWizard seat={seat} authorizeUrl={authorizeUrl} />
+      </div>
+    );
+  }
+
+  function hitList(x: number, y: number): string | null {
+    for (const [id, el] of colRefs.current) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return id;
+    }
+    return null;
+  }
+
+  function onCardDown(event: PointerEvent<HTMLElement>, card: { id: string; name: string; feel: string | null }) {
+    if ((event.target as HTMLElement).closest("button, .feel-dots")) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const next: RaDrag = {
+      cardId: card.id,
+      name: card.name,
+      feel: card.feel || "gold",
+      x: event.clientX,
+      y: event.clientY,
+      grabX: event.clientX,
+      grabY: event.clientY,
+      overListId: null,
+      overArchive: event.clientY < 72,
+    };
+    dragRef.current = next;
+    setDrag(next);
+  }
+
+  function onCardMove(event: PointerEvent<HTMLElement>) {
+    if (!dragRef.current) return;
+    const overArchive = event.clientY < 72;
+    const next: RaDrag = {
+      ...dragRef.current,
+      x: event.clientX,
+      y: event.clientY,
+      overListId: overArchive ? null : hitList(event.clientX, event.clientY),
+      overArchive,
+    };
+    dragRef.current = next;
+    setDrag(next);
+  }
+
+  function onCardUp(event: PointerEvent<HTMLElement>) {
+    const current = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+    if (!current) return;
+    const moved = Math.hypot(event.clientX - current.grabX, event.clientY - current.grabY) > 8;
+    if (current.overArchive) {
+      onArchive(current.cardId);
+      return;
+    }
+    if (moved && current.overListId) {
+      onMove(current.cardId, current.overListId);
+    }
+  }
+
+  const portal =
+    typeof document !== "undefined" && drag
+      ? createPortal(
+          <>
+            <div className={`ra-sky${drag.overArchive ? " is-hot" : ""}`} data-ra-archive>
+              soltá para archivar
+            </div>
+            <div
+              className={`board-feel board-feel-${drag.feel} ra-drag-card`}
+              data-ra-dragging
+              style={{ left: drag.x - 56, top: drag.y - 18 }}
+            >
+              {drag.name}
+            </div>
+          </>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div className="miniapp-body" data-miniapp="boards">
+    <div className="miniapp-body ra-game" data-miniapp="boards" data-ra-game>
       <p className="miniapp-kicker">Ra</p>
-      {!board.configured ? <p className="talk-empty">Ra no está.</p> : null}
+      <p className="ra-game-hint">tirá las tarjetas. arriba se archivan.</p>
       <div className="board-mini">
         {board.lists.map((list) => (
-          <div key={list.id} className="board-column">
+          <div
+            key={list.id}
+            className={`board-column${drag?.overListId === list.id ? " is-drop" : ""}`}
+            data-ra-list={list.id}
+            ref={(el) => {
+              if (el) colRefs.current.set(list.id, el);
+              else colRefs.current.delete(list.id);
+            }}
+          >
             <span className="board-col-title">{list.name}</span>
             {board.cards
-              .filter((card) => card.idList === list.id && !card.closed)
+              .filter((card) => card.idList === list.id && !card.closed && card.id !== drag?.cardId)
               .map((card) => (
-                <div key={card.id} className="board-feel board-feel-gold">
+                <div
+                  key={card.id}
+                  className={`board-feel board-feel-${card.feel || "gold"}`}
+                  data-ra-card={card.id}
+                  onPointerDown={(event) => onCardDown(event, { id: card.id, name: card.name, feel: card.feel })}
+                  onPointerMove={onCardMove}
+                  onPointerUp={onCardUp}
+                  onPointerCancel={onCardUp}
+                >
                   {card.name}
+                  <div className="feel-dots" role="group" aria-label="color">
+                    {FEEL_COLOR_IDS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`feel-dot board-feel-${color}${card.feel === color ? " is-on" : ""}`}
+                        aria-label={color}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={() => onColor(card.id, color)}
+                      />
+                    ))}
+                  </div>
                   <div className="board-card-ops">
-                    <button type="button" className="board-mini-btn" onClick={() => onDone(card.name)}>
+                    <button type="button" className="board-mini-btn" onClick={() => onDone(card.id)}>
                       listo
                     </button>
                   </div>
                 </div>
               ))}
+            <form
+              className="miniapp-add"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const title = (drafts[list.id] || "").trim();
+                if (!title) return;
+                setDrafts((prev) => ({ ...prev, [list.id]: "" }));
+                onAdd(title, list.id);
+              }}
+            >
+              <input
+                value={drafts[list.id] || ""}
+                onChange={(event) => setDrafts((prev) => ({ ...prev, [list.id]: event.target.value }))}
+                placeholder="tirá una…"
+                aria-label={`Nueva en ${list.name}`}
+              />
+              <button type="submit" disabled={!(drafts[list.id] || "").trim()}>
+                ok
+              </button>
+            </form>
           </div>
         ))}
       </div>
-      <form
-        className="miniapp-add"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const title = draft.trim();
-          if (!title) return;
-          setDraft("");
-          onAdd(title);
-        }}
-      >
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="agregá a Ra" aria-label="Nueva tarjeta Ra" />
-        <button type="submit" disabled={!draft.trim()}>
-          ok
-        </button>
-      </form>
+      {portal}
     </div>
   );
 }
@@ -389,13 +582,23 @@ function MiniappChrome({
 
 export function CompanionApps({
   board = emptyRaBoard(),
+  seat = "katho",
+  authorizeUrl = null,
   onRaAdd,
+  onRaMove,
   onRaDone,
+  onRaColor,
+  onRaArchive,
   onFoco,
 }: {
   board?: RaBoard;
-  onRaAdd: (title: string) => void;
-  onRaDone: (title: string) => void;
+  seat?: PersonId;
+  authorizeUrl?: string | null;
+  onRaAdd: (title: string, listId?: string) => void;
+  onRaMove: (cardId: string, listId: string) => void;
+  onRaDone: (cardId: string) => void;
+  onRaColor: (cardId: string, color: FeelColor) => void;
+  onRaArchive: (cardId: string) => void;
   onFoco: (foco: boolean) => void;
 }) {
   const phone = usePhone();
@@ -446,6 +649,12 @@ export function CompanionApps({
     setNavOpen(false);
   }
 
+  useEffect(() => {
+    const openHouse = () => pick("boards");
+    window.addEventListener(COMPANION_OPEN_RA, openHouse);
+    return () => window.removeEventListener(COMPANION_OPEN_RA, openHouse);
+  }, []);
+
   function close(id: RaAppId) {
     setOrder((prev) => prev.filter((row) => row !== id));
     setWins((prev) => prev.filter((row) => row.id !== id));
@@ -456,7 +665,18 @@ export function CompanionApps({
     if (id === "notas") return <NotasPane />;
     if (id === "video") return <VideoPane />;
     if (id === "radio") return <RuidoPane />;
-    return <RaPane board={board} onAdd={onRaAdd} onDone={onRaDone} />;
+    return (
+      <RaPane
+        board={board}
+        seat={seat}
+        authorizeUrl={authorizeUrl}
+        onAdd={onRaAdd}
+        onMove={onRaMove}
+        onDone={onRaDone}
+        onColor={onRaColor}
+        onArchive={onRaArchive}
+      />
+    );
   }
 
   const positions = useMemo(() => {

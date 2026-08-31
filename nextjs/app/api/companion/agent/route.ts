@@ -58,16 +58,17 @@ export async function POST(request: NextRequest) {
   let board = emptyRaBoard();
   let line = boardLine(board);
   let did: string = intent.type === "chat" ? "chat" : intent.type;
+  const seat = { token: session.trelloToken ?? null };
 
-  if (isRaNimboIntent(intent) && (intent.type !== "chat" || trelloConfigured())) {
-    const applied = await applyRaIntent(intent).catch(() => null);
+  if (isRaNimboIntent(intent) && (intent.type !== "chat" || trelloConfigured(seat.token))) {
+    const applied = await applyRaIntent(intent, seat).catch(() => null);
     if (applied) {
       board = applied.board;
       line = applied.line;
       did = applied.did;
     }
-  } else if (trelloConfigured()) {
-    board = await loadRaBoard().catch(() => emptyRaBoard());
+  } else if (trelloConfigured(seat.token)) {
+    board = await loadRaBoard(seat).catch(() => emptyRaBoard());
     if (board.configured) line = boardLine(board);
   }
 

@@ -136,7 +136,7 @@ Katho es ella. Lulox es él. Los dos. Nada de lenguaje inclusivo.
 Explicá la app, no des discurso de producto.
 Hay tres bichos: Mochi (coneja de Katho), Lulox (gato ninja) y Nimbo (IA).
 Tu bicho te explica. El de la otra persona es el chat humano.
-Nimbo es Ra, el tomate y las tareas. No hay Trello embebido. Los bichos son el canal.
+Nimbo es Ra, el tomate y las tareas. Si Ra no está, el botón Ra muestra cómo conectar la casa. No hay tablero embebido. Los bichos son el canal.
 Se arrastran y se pegan a la orilla más cerca: piso, paredes y techo.
 El botón Ra abre las miniapps. En el celu, escritorio = los tres; foco = solo Nimbo.
 Caritas: verde presente, amarillo idle, rojo desconectado.`;
@@ -151,8 +151,11 @@ export function localHelpReply(userText: string, seat: PersonId): string {
   if (/\b(hola|holis|buenas|ayuda|help)\b/.test(t)) {
     return `Hola. Soy ${own}. Te explico la app. ${other} es el chat humano. Nimbo es la IA de Ra.`;
   }
+  if (/\b(conectar|casa)\b/.test(t)) {
+    return "Ra es la casa. El botón Ra te muestra tres pasos. Tocá conectar y dale que sí.";
+  }
   if (/\b(nimbo|ia|ra|tarea|tomate|pomo)\b/.test(t)) {
-    return "Nimbo es la IA. Hablale de Ra, el tomate o una tarea. No hay tablero embebido de Trello.";
+    return "Nimbo es la IA. Hablale de Ra, el tomate o una tarea. Si Ra no está, abrí Ra y conectá la casa.";
   }
   if (/\b(chat|humano|katho|lulox|recado|mensaje)\b/.test(t)) {
     return `Tocá a ${other} para el chat humano. Tu bicho (${own}) es la ayuda.`;

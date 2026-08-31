@@ -24,7 +24,9 @@ import {
   createCompanionSession,
   googleClientId,
   persistSessionThroughReload,
+  publicCompanionSession,
   seatFromGoogleEmail,
+  withTrelloToken,
 } from "./auth";
 import {
   CHAT_WINDOWS,
@@ -60,10 +62,15 @@ import {
 import { boardLegendLine } from "./boards";
 import { NIMBO_NAME, NIMBO_SOUL, extractLlmText, localNimboReply, pickLlmProvider } from "./llm";
 import {
+  RA_CONNECT_JARGON,
   RA_MISSING_LINE,
   applyRaIntent,
+  handleCompanionTrelloRequest,
   parseRaIntent,
+  readTrelloTokenFromCallback,
+  trelloAuthorizeUrl,
   trelloConfigured,
+  wizardCopyText,
   type RaBoard,
 } from "./trello";
 import { NIMBO_SPRITE_BASE, spriteUrl } from "./shimeji-engine";
@@ -106,6 +113,20 @@ describe("google allowlist + session", () => {
     const again = persistSessionThroughReload(lulox);
     assert.equal(again.restored?.personId, "lulox");
     assert.equal(again.restored?.kind, "ninja-cat");
+  });
+
+  it("per-seat house token stays on the cookie and never in the public session", () => {
+    const token = "b".repeat(64);
+    const created = withTrelloToken(createCompanionSession(KATHO_GOOGLE_EMAIL)!, token);
+    const { restored } = persistSessionThroughReload(created);
+    assert.equal(restored?.trelloToken, token);
+    const pub = publicCompanionSession(restored!);
+    assert.equal(pub.trelloConnected, true);
+    assert.equal("trelloToken" in pub, false);
+    assert.doesNotMatch(JSON.stringify(pub), new RegExp(token));
+    const naked = persistSessionThroughReload(createCompanionSession(LULOX_GOOGLE_EMAIL)!);
+    assert.equal(naked.restored?.trelloToken, undefined);
+    assert.equal(publicCompanionSession(naked.restored!).trelloConnected, false);
   });
 
   it("unverified Google email is refused", () => {
@@ -319,6 +340,7 @@ describe("copy + llm + trello", () => {
 
   it("Trello Ra add/move/done against a fake board", async () => {
     assert.equal(trelloConfigured({}), false);
+    assert.equal(trelloConfigured(null, { TRELLO_API_KEY: "k", TRELLO_TOKEN: "ENV_SECRET" }), false);
     const none = await applyRaIntent({ type: "add", title: "pan" }, {});
     assert.equal(none.did, "need-trello");
     assert.equal(none.line, `${RA_MISSING_LINE} Te lo anoté en la lista.`);
@@ -330,8 +352,10 @@ describe("copy + llm + trello", () => {
       { id: "l2", name: "Listo", pos: 2 },
     ];
     const cards: Array<{ id: string; name: string; idList: string; closed: boolean; pos: number }> = [];
+    const urls: string[] = [];
     const fetchImpl: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      urls.push(url);
       if (url.includes("/lists")) {
         return new Response(JSON.stringify(lists), { status: 200 });
       }
@@ -356,17 +380,137 @@ describe("copy + llm + trello", () => {
       return new Response("no", { status: 404 });
     }) as typeof fetch;
 
-    const env = { TRELLO_API_KEY: "k", TRELLO_TOKEN: "t" };
-    const added = await applyRaIntent({ type: "add", title: "comprar pan" }, env, fetchImpl);
+    const seat = { token: "user-seat-token", env: { TRELLO_API_KEY: "k", TRELLO_TOKEN: "ENV_SECRET" } };
+    const added = await applyRaIntent({ type: "add", title: "comprar pan" }, seat, fetchImpl);
     assert.equal(added.did, "add");
     assert.equal(added.board.configured, true);
     assert.ok(added.board.cards.some((c) => c.name === "comprar pan"));
-    const moved = await applyRaIntent({ type: "move", title: "comprar pan", listHint: "Listo" }, env, fetchImpl);
+    const moved = await applyRaIntent({ type: "move", title: "comprar pan", listHint: "Listo" }, seat, fetchImpl);
     assert.equal(moved.did, "move");
-    const done = await applyRaIntent({ type: "done", title: "comprar pan" }, env, fetchImpl);
+    const done = await applyRaIntent({ type: "done", title: "comprar pan" }, seat, fetchImpl);
     assert.equal(done.did, "done");
     const board: RaBoard = added.board;
     assert.equal(board.id, "UjFhgg3n");
+    assert.ok(urls.every((url) => url.includes("token=user-seat-token")));
+    assert.ok(urls.every((url) => !url.includes("ENV_SECRET")));
+  });
+
+  it("wizard copy is 3 pasos rioplatense, no jargon, ella/él/los dos", () => {
+    const katho = wizardCopyText("katho");
+    const lulox = wizardCopyText("lulox");
+    assert.equal(RA_CONNECT_JARGON.test(katho), false);
+    assert.equal(RA_CONNECT_JARGON.test(lulox), false);
+    assert.equal(INCLUSIVE.test(katho), false);
+    assert.equal(INCLUSIVE.test(lulox), false);
+    assert.match(katho, /Esta es tu casa/);
+    assert.match(katho, /conectar/);
+    assert.match(katho, /Listo, ya está/);
+    assert.match(katho, /ella/);
+    assert.match(lulox, /él/);
+    assert.match(katho, /los dos/);
+    assert.match(lulox, /los dos/);
+    assert.doesNotMatch(katho, /pega la clave/i);
+    assert.doesNotMatch(lulox, /pega la clave/i);
+  });
+
+  it("authorize URL uses the public key and a fragment callback", () => {
+    const url = trelloAuthorizeUrl({
+      key: "publickey",
+      returnUrl: "https://mochiagents.vercel.app/",
+    });
+    assert.match(url, /^https:\/\/trello\.com\/1\/authorize\?/);
+    assert.match(url, /callback_method=fragment/);
+    assert.match(url, /response_type=token/);
+    assert.match(url, /return_url=/);
+    assert.match(url, /key=publickey/);
+    const back = readTrelloTokenFromCallback({ hash: `#token=${"c".repeat(64)}` });
+    assert.equal(back, "c".repeat(64));
+    assert.equal(readTrelloTokenFromCallback({ hash: "#nope" }), null);
+  });
+
+  it("unconnected seat cannot write even if env has Luciano's token; connected seat can add/move", async () => {
+    const lists = [
+      { id: "l1", name: "Hacer", pos: 1 },
+      { id: "l2", name: "Listo", pos: 2 },
+    ];
+    const cards: Array<{
+      id: string;
+      name: string;
+      idList: string;
+      closed: boolean;
+      pos: number;
+      labels?: Array<{ id: string; name: string; color: string | null }>;
+    }> = [];
+    const urls: string[] = [];
+    const fetchImpl: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("/members/me")) {
+        return new Response(JSON.stringify({ id: "me" }), { status: 200 });
+      }
+      if (url.includes("/lists")) return new Response(JSON.stringify(lists), { status: 200 });
+      if (url.includes("/labels") && (!init || !init.method || init.method === "GET")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes("/cards?") && url.includes("filter=open") && (!init || !init.method || init.method === "GET")) {
+        return new Response(JSON.stringify(cards), { status: 200 });
+      }
+      if (url.includes("/cards?") && init?.method === "POST") {
+        const name = new URL(url).searchParams.get("name") || "x";
+        const idList = new URL(url).searchParams.get("idList") || "l1";
+        const card = { id: `c${cards.length + 1}`, name, idList, closed: false, pos: cards.length, labels: [] };
+        cards.push(card);
+        return new Response(JSON.stringify(card), { status: 200 });
+      }
+      if (url.includes("/cards/") && init?.method === "PUT") {
+        const id = url.split("/cards/")[1].split("?")[0];
+        const u = new URL(url);
+        const card = cards.find((c) => c.id === id);
+        if (card && u.searchParams.get("idList")) card.idList = u.searchParams.get("idList")!;
+        return new Response(JSON.stringify(card || {}), { status: 200 });
+      }
+      return new Response("no", { status: 404 });
+    }) as typeof fetch;
+
+    const env = { TRELLO_API_KEY: "k", TRELLO_TOKEN: "ENV_SECRET" };
+    const katho = createCompanionSession(KATHO_GOOGLE_EMAIL)!;
+    const blocked = await handleCompanionTrelloRequest({
+      session: katho,
+      method: "POST",
+      body: { action: "add", title: "pan" },
+      origin: "https://mochiagents.vercel.app",
+      env,
+      fetchImpl,
+    });
+    assert.equal(blocked.body.did, "need-trello");
+    assert.equal(blocked.body.configured, false);
+    assert.equal(urls.length, 0);
+
+    const userToken = "d".repeat(64);
+    const connected = withTrelloToken(katho, userToken);
+    const added = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "add", title: "pan" },
+      origin: "https://mochiagents.vercel.app",
+      env,
+      fetchImpl,
+    });
+    assert.equal(added.body.did, "add");
+    assert.equal(added.body.configured, true);
+    const moved = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "move", cardId: "c1", listId: "l2" },
+      origin: "https://mochiagents.vercel.app",
+      env,
+      fetchImpl,
+    });
+    assert.equal(moved.body.did, "move");
+    assert.ok(urls.every((url) => !url.includes("ENV_SECRET")));
+    assert.ok(urls.some((url) => url.includes(`token=${userToken}`)));
+    assert.doesNotMatch(JSON.stringify(added.body), /trelloToken/);
+    assert.doesNotMatch(JSON.stringify(added.body), new RegExp(userToken));
   });
 });
 
@@ -456,6 +600,22 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.doesNotMatch(apps, /trello\.com\/b/);
     assert.doesNotMatch(apps, /trello\.com\/embed/i);
     assert.doesNotMatch(apps, /<iframe[^>]+trello/i);
+    assert.match(apps, /data-ra-wizard/);
+    assert.match(apps, /data-ra-connect/);
+    assert.match(apps, /data-ra-card/);
+    assert.match(apps, /data-ra-archive/);
+    assert.match(apps, /onPointerDown/);
+    assert.match(surface, /readTrelloTokenFromCallback/);
+    assert.match(surface, /replaceState/);
+    assert.match(surface, /action: "connect"/);
+    assert.match(surface, /action: "move"/);
+    assert.doesNotMatch(`${surface}\n${apps}`, /pega la clave/i);
+    const trelloSrc = readFileSync(join(here, "trello.ts"), "utf8");
+    const authSrc = readFileSync(join(here, "auth.ts"), "utf8");
+    const trelloRoute = readFileSync(join(here, "../../app/api/companion/trello/route.ts"), "utf8");
+    const blob = `${trelloSrc}\n${authSrc}\n${trelloRoute}\n${surface}\n${apps}`;
+    assert.doesNotMatch(blob, /TRELLO_TOKEN\s*=\s*["'][^"']+["']/);
+    assert.doesNotMatch(blob, /<iframe[^>]+trello/i);
     assert.match(surface, /data-desk-faces/);
     assert.match(surface, /data-ra-launcher|CompanionApps/);
     assert.match(surface, /data-talk-never-hide/);

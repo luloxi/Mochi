@@ -90,6 +90,7 @@ export const COMPANION_STORAGE = {
 export const DEFAULT_POMO_MINUTES = 25;
 export const COMPANION_DUE_EVENT = "mochi-companion-due";
 export const COMPANION_POMO_EVENT = "mochi-companion-pomo";
+export const COMPANION_OPEN_RA = "mochi-companion-open-ra";
 
 export type PomoClock = {
   running: boolean;

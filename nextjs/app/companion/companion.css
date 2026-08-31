@@ -151,9 +151,11 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   border: 2px solid var(--c-ink);
   background: var(--c-gold);
   color: var(--c-ink);
+  font: inherit;
   font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .companion-google-btn {
@@ -455,17 +457,146 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 
 .board-mini {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   overflow: auto;
-  max-height: 16vh;
+  max-height: 52vh;
+  min-height: 28vh;
+  padding-bottom: 8px;
 }
 
 .board-column {
-  min-width: 120px;
+  min-width: 148px;
+  flex: 1;
   background: #fff;
   border: 2px solid var(--c-ink);
   border-radius: 12px;
   padding: 6px;
+}
+
+.board-column.is-drop {
+  background: #fff4c8;
+  box-shadow: 4px 4px 0 var(--c-ink);
+}
+
+.board-feel {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.ra-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ra-wizard-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ra-wizard-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ra-wizard-n {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  border: 2px solid var(--c-ink);
+  background: var(--c-gold);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ra-wizard-steps strong {
+  display: block;
+  font-size: 14px;
+}
+
+.ra-wizard-steps p {
+  margin: 2px 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.ra-connect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid var(--c-ink);
+  background: var(--c-gold);
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 6px 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ra-connect[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ra-game-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ra-sky {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 350;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 12, 24, 0.88);
+  color: #fff6ee;
+  font-size: 14px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.ra-sky.is-hot {
+  background: #e24b4b;
+}
+
+.ra-drag-card {
+  position: fixed;
+  z-index: 360;
+  width: 132px;
+  pointer-events: none;
+  box-shadow: 6px 8px 0 var(--c-ink);
+}
+
+.miniapp-window[data-miniapp-window="boards"] {
+  width: min(640px, 94vw);
+  max-height: 82vh;
+}
+
+.ra-game .feel-dots {
+  margin-top: 6px;
+}
+
+.ra-game .feel-dot {
+  width: 12px;
+  height: 12px;
 }
 
 .board-col-title {

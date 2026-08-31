@@ -46,6 +46,12 @@ export type CompanionAuthSession = {
   kind: "rabbit" | "ninja-cat";
   pronoun: "ella" | "él";
   issuedAt: number;
+  /** Per-seat house token. Cookie only — never JSON to the client, never env. */
+  trelloToken?: string;
+};
+
+export type CompanionPublicSession = Omit<CompanionAuthSession, "trelloToken"> & {
+  trelloConnected: boolean;
 };
 
 export function normalizeGoogleEmail(email: string | null | undefined): string {
@@ -131,10 +137,42 @@ export function restoreCompanionSession(
     if (!parsed || typeof parsed.email !== "string" || typeof parsed.issuedAt !== "number") return null;
     if (now - parsed.issuedAt > COMPANION_SESSION_MAX_AGE_SEC * 1000) return null;
     const fresh = createCompanionSession(parsed.email, parsed.issuedAt);
+    if (!fresh) return null;
+    const trelloToken = typeof parsed.trelloToken === "string" ? parsed.trelloToken.trim() : "";
+    if (trelloToken && isPlausibleSeatToken(trelloToken)) {
+      return { ...fresh, trelloToken };
+    }
     return fresh;
   } catch {
     return null;
   }
+}
+
+export function isPlausibleSeatToken(token: string): boolean {
+  return /^[a-zA-Z0-9]{32,256}$/.test(String(token || "").trim());
+}
+
+export function withTrelloToken(session: CompanionAuthSession, token: string): CompanionAuthSession {
+  const trelloToken = String(token || "").trim();
+  if (!isPlausibleSeatToken(trelloToken)) {
+    const next = { ...session };
+    delete next.trelloToken;
+    return next;
+  }
+  return { ...session, trelloToken };
+}
+
+export function publicCompanionSession(session: CompanionAuthSession): CompanionPublicSession {
+  return {
+    email: session.email,
+    personId: session.personId,
+    name: session.name,
+    mascot: session.mascot,
+    kind: session.kind,
+    pronoun: session.pronoun,
+    issuedAt: session.issuedAt,
+    trelloConnected: Boolean(session.trelloToken && isPlausibleSeatToken(session.trelloToken)),
+  };
 }
 
 /** Cookie jar used by tests to simulate an Android Chrome reload (not tab memory). */

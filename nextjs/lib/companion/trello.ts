@@ -1,16 +1,31 @@
 /**
- * Trello Ra board. View / add / move / done.
- * https://trello.com/b/UjFhgg3n/ra
+ * Trello Ra board. View / add / move / done / color / archive.
+ * House: https://trello.com/b/UjFhgg3n/ra
+ * Per-seat token lives on the companion session. Env TRELLO_TOKEN is Luciano's
+ * and must never stand in for Katho or Lulox.
  */
+
+import type { CompanionAuthSession } from "./auth";
+import { isPlausibleSeatToken, withTrelloToken } from "./auth";
+import type { FeelColor } from "./boards";
+import { FEEL_COLOR_IDS, parseFeelColor } from "./boards";
+import type { PersonId } from "./companion-core";
 
 export const RA_BOARD_ID = "UjFhgg3n";
 export const RA_BOARD_NAME = "Ra";
 export const TRELLO_API = "https://api.trello.com/1";
+export const TRELLO_AUTHORIZE = "https://trello.com/1/authorize";
 
 export type TrelloCreds = { key: string; token: string };
 
+export type RaSeat = {
+  token?: string | null;
+  env?: Record<string, string | undefined>;
+};
+
 export const RA_MISSING_LINE = "Ra no está.";
 
+export type RaLabel = { id: string; name: string; color: string | null };
 export type RaList = { id: string; name: string; pos: number };
 export type RaCard = {
   id: string;
@@ -20,6 +35,8 @@ export type RaCard = {
   pos: number;
   due: string | null;
   dueComplete?: boolean;
+  labels: RaLabel[];
+  feel: FeelColor | null;
 };
 export type RaBoard = {
   id: string;
@@ -36,19 +53,82 @@ export type RaIntent =
   | { type: "done"; title: string }
   | { type: "chat" };
 
-export function trelloCredentials(env: Record<string, string | undefined> = process.env): TrelloCreds | null {
+export type RaWizardStep = { n: 1 | 2 | 3; title: string; body: string };
+
+export const RA_CONNECT_JARGON =
+  /\b(oauth|api|token|clave|key|secret|endpoint|bearer|client id|apikey|api key)\b/i;
+
+const TRELLO_TO_FEEL: Record<string, FeelColor> = {
+  red: "red",
+  orange: "orange",
+  yellow: "yellow",
+  green: "green",
+  blue: "blue",
+  purple: "purple",
+  lime: "green",
+  sky: "blue",
+  pink: "red",
+  black: "purple",
+};
+
+const FEEL_TO_TRELLO: Record<FeelColor, string> = {
+  red: "red",
+  orange: "orange",
+  yellow: "yellow",
+  green: "green",
+  blue: "blue",
+  purple: "purple",
+};
+
+export function trelloApiKey(env: Record<string, string | undefined> = process.env): string | null {
   const key = String(env.TRELLO_API_KEY || env.TRELLO_KEY || "").trim();
-  const token = String(env.TRELLO_TOKEN || env.TRELLO_API_TOKEN || "").trim();
-  if (!key || !token) return null;
-  return { key, token };
+  return key || null;
 }
 
-export function trelloConfigured(env: Record<string, string | undefined> = process.env): boolean {
-  return trelloCredentials(env) !== null;
+export function seatTrelloCreds(
+  token: string | null | undefined,
+  env: Record<string, string | undefined> = process.env,
+): TrelloCreds | null {
+  const key = trelloApiKey(env);
+  const t = String(token || "").trim();
+  if (!key || !t) return null;
+  return { key, token: t };
+}
+
+export function resolveRaSeat(seat: RaSeat = {}): {
+  token: string | null;
+  env: Record<string, string | undefined>;
+} {
+  return {
+    token: String(seat.token || "").trim() || null,
+    env: seat.env ?? process.env,
+  };
+}
+
+/** Seat is connected only with THAT user's token. Env TRELLO_TOKEN does not count. */
+export function trelloConfigured(
+  token?: string | null | Record<string, string | undefined>,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (typeof token !== "string") return false;
+  return seatTrelloCreds(token, env) !== null;
+}
+
+/** @deprecated Env pair is Luciano's. Never treat it as a connected seat. */
+export function trelloCredentials(
+  env: Record<string, string | undefined> = process.env,
+): TrelloCreds | null {
+  void env;
+  return null;
 }
 
 function authQuery(creds: TrelloCreds): string {
   return `key=${encodeURIComponent(creds.key)}&token=${encodeURIComponent(creds.token)}`;
+}
+
+function credsOrNull(seat: RaSeat = {}): TrelloCreds | null {
+  const resolved = resolveRaSeat(seat);
+  return seatTrelloCreds(resolved.token, resolved.env);
 }
 
 export function emptyRaBoard(): RaBoard {
@@ -86,6 +166,61 @@ export function boardLine(board: RaBoard): string {
     return `${list.name}: ${names.length ? names.join(" · ") : "—"}`;
   });
   return parts.join(" / ");
+}
+
+export function feelFromLabels(labels: RaLabel[] | undefined): FeelColor | null {
+  for (const label of labels || []) {
+    const c = String(label.color || "").toLowerCase();
+    if (c && TRELLO_TO_FEEL[c]) return TRELLO_TO_FEEL[c];
+  }
+  return null;
+}
+
+export function mapRaCard(raw: {
+  id: string;
+  name: string;
+  idList: string;
+  closed?: boolean;
+  pos?: number;
+  due?: string | null;
+  dueComplete?: boolean;
+  labels?: Array<{ id: string; name: string; color: string | null }>;
+}): RaCard {
+  const labels = Array.isArray(raw.labels)
+    ? raw.labels.map((l) => ({ id: l.id, name: l.name, color: l.color ?? null }))
+    : [];
+  return {
+    id: raw.id,
+    name: raw.name,
+    idList: raw.idList,
+    closed: !!raw.closed,
+    pos: raw.pos ?? 0,
+    due: raw.due || null,
+    dueComplete: !!raw.dueComplete,
+    labels,
+    feel: feelFromLabels(labels),
+  };
+}
+
+export function moveCardOnBoard(board: RaBoard, cardId: string, listId: string): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) => (card.id === cardId ? { ...card, idList: listId } : card)),
+  };
+}
+
+export function colorCardOnBoard(board: RaBoard, cardId: string, feel: FeelColor): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) => (card.id === cardId ? { ...card, feel } : card)),
+  };
+}
+
+export function archiveCardOnBoard(board: RaBoard, cardId: string): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) => (card.id === cardId ? { ...card, closed: true } : card)),
+  };
 }
 
 function stripLead(text: string, pattern: RegExp): string {
@@ -192,11 +327,81 @@ async function trelloFetch<T>(
   return (await res.json()) as T;
 }
 
+export function trelloReturnUrl(origin: string): string {
+  const base = String(origin || "").trim().replace(/\/$/, "");
+  return `${base || ""}/`;
+}
+
+export function trelloAuthorizeUrl(args: { key: string; returnUrl: string; appName?: string }): string {
+  const params = new URLSearchParams({
+    expiration: "never",
+    name: args.appName || "Ra",
+    scope: "read,write",
+    response_type: "token",
+    key: args.key,
+    return_url: args.returnUrl,
+    callback_method: "fragment",
+  });
+  return `${TRELLO_AUTHORIZE}?${params.toString()}`;
+}
+
+export function readTrelloTokenFromCallback(input: { hash?: string; search?: string }): string | null {
+  const hash = String(input.hash || "").replace(/^#/, "").trim();
+  const search = String(input.search || "").replace(/^\?/, "").trim();
+  const hashQuery = hash.includes("=") ? hash : hash ? `token=${hash}` : "";
+  const fromHash = new URLSearchParams(hashQuery);
+  const fromSearch = new URLSearchParams(search);
+  const token = String(fromHash.get("token") || fromSearch.get("token") || "").trim();
+  return isPlausibleSeatToken(token) ? token : null;
+}
+
+export function raConnectWizard(personId: PersonId): {
+  steps: RaWizardStep[];
+  connectLabel: string;
+  doneLine: string;
+  missingLine: string;
+} {
+  const ella = personId === "katho";
+  return {
+    steps: [
+      {
+        n: 1,
+        title: "Esta es tu casa",
+        body: ella
+          ? "Katho, esta es la casa de los dos: Ra. Acá viven las cosas de ella y de Lulox."
+          : "Lulox, esta es la casa de los dos: Ra. Acá viven las cosas de él y de Katho.",
+      },
+      {
+        n: 2,
+        title: "Conectar",
+        body: ella
+          ? "Un botón conectar. Tocá y dale que sí. Después ella vuelve sola a la casa."
+          : "Un botón conectar. Tocá y dale que sí. Después él vuelve solo a la casa.",
+      },
+      {
+        n: 3,
+        title: "Listo, ya está",
+        body: ella
+          ? "Cuando vuelvas, ya podés tirar tarjetas y moverlas. Nimbo habla igual."
+          : "Cuando vuelvas, ya podés tirar tarjetas y moverlas. Nimbo habla igual.",
+      },
+    ],
+    connectLabel: "conectar",
+    doneLine: "Listo, ya está.",
+    missingLine: RA_MISSING_LINE,
+  };
+}
+
+export function wizardCopyText(personId: PersonId): string {
+  const w = raConnectWizard(personId);
+  return [w.connectLabel, w.doneLine, w.missingLine, ...w.steps.map((s) => `${s.title} ${s.body}`)].join("\n");
+}
+
 export async function loadRaBoard(
-  env: Record<string, string | undefined> = process.env,
+  seat: RaSeat = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<RaBoard> {
-  const creds = trelloCredentials(env);
+  const creds = credsOrNull(seat);
   if (!creds) return emptyRaBoard();
   const [lists, cards] = await Promise.all([
     trelloFetch<Array<{ id: string; name: string; pos: number }>>(
@@ -214,9 +419,10 @@ export async function loadRaBoard(
         pos: number;
         due: string | null;
         dueComplete?: boolean;
+        labels?: Array<{ id: string; name: string; color: string | null }>;
       }>
     >(
-      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete`,
+      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete,labels`,
       creds,
       undefined,
       fetchImpl,
@@ -226,15 +432,7 @@ export async function loadRaBoard(
     id: RA_BOARD_ID,
     name: RA_BOARD_NAME,
     lists: lists.map((l) => ({ id: l.id, name: l.name, pos: l.pos })),
-    cards: cards.map((c) => ({
-      id: c.id,
-      name: c.name,
-      idList: c.idList,
-      closed: !!c.closed,
-      pos: c.pos,
-      due: c.due || null,
-      dueComplete: !!c.dueComplete,
-    })),
+    cards: cards.map((c) => mapRaCard(c)),
     configured: true,
   };
 }
@@ -242,10 +440,10 @@ export async function loadRaBoard(
 export async function addRaCard(
   title: string,
   listId: string,
-  env: Record<string, string | undefined> = process.env,
+  seat: RaSeat = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<RaCard> {
-  const creds = trelloCredentials(env);
+  const creds = credsOrNull(seat);
   if (!creds) throw new Error("TRELLO_UNCONFIGURED");
   const card = await trelloFetch<{
     id: string;
@@ -255,30 +453,23 @@ export async function addRaCard(
     pos: number;
     due: string | null;
     dueComplete?: boolean;
+    labels?: Array<{ id: string; name: string; color: string | null }>;
   }>(
     `/cards?idList=${encodeURIComponent(listId)}&name=${encodeURIComponent(title.slice(0, 180))}`,
     creds,
     { method: "POST" },
     fetchImpl,
   );
-  return {
-    id: card.id,
-    name: card.name,
-    idList: card.idList,
-    closed: !!card.closed,
-    pos: card.pos,
-    due: card.due || null,
-    dueComplete: !!card.dueComplete,
-  };
+  return mapRaCard(card);
 }
 
 export async function moveRaCard(
   cardId: string,
   listId: string,
-  env: Record<string, string | undefined> = process.env,
+  seat: RaSeat = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
-  const creds = trelloCredentials(env);
+  const creds = credsOrNull(seat);
   if (!creds) throw new Error("TRELLO_UNCONFIGURED");
   await trelloFetch(`/cards/${cardId}?idList=${encodeURIComponent(listId)}`, creds, { method: "PUT" }, fetchImpl);
 }
@@ -286,52 +477,284 @@ export async function moveRaCard(
 export async function doneRaCard(
   cardId: string,
   board: RaBoard,
-  env: Record<string, string | undefined> = process.env,
+  seat: RaSeat = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
-  const creds = trelloCredentials(env);
+  const creds = credsOrNull(seat);
   if (!creds) throw new Error("TRELLO_UNCONFIGURED");
   const target = doneList(board);
   if (target) {
-    await moveRaCard(cardId, target.id, env, fetchImpl);
+    await moveRaCard(cardId, target.id, seat, fetchImpl);
     return;
   }
   await trelloFetch(`/cards/${cardId}?closed=true`, creds, { method: "PUT" }, fetchImpl);
 }
 
+export async function archiveRaCard(
+  cardId: string,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  await trelloFetch(`/cards/${cardId}?closed=true`, creds, { method: "PUT" }, fetchImpl);
+}
+
+export async function colorRaCard(
+  cardId: string,
+  feel: FeelColor,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  const color = FEEL_TO_TRELLO[feel] || "yellow";
+  const labels = await trelloFetch<Array<{ id: string; name: string; color: string | null }>>(
+    `/boards/${RA_BOARD_ID}/labels?limit=1000`,
+    creds,
+    undefined,
+    fetchImpl,
+  );
+  let label = labels.find((row) => String(row.color || "").toLowerCase() === color);
+  if (!label) {
+    label = await trelloFetch<{ id: string; name: string; color: string | null }>(
+      `/labels?idBoard=${encodeURIComponent(RA_BOARD_ID)}&name=${encodeURIComponent(feel)}&color=${encodeURIComponent(color)}`,
+      creds,
+      { method: "POST" },
+      fetchImpl,
+    );
+  }
+  await trelloFetch(`/cards/${cardId}?idLabels=${encodeURIComponent(label.id)}`, creds, { method: "PUT" }, fetchImpl);
+}
+
 export async function applyRaIntent(
   intent: RaIntent,
-  env: Record<string, string | undefined> = process.env,
+  seat: RaSeat = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ board: RaBoard; line: string; did: "list" | "add" | "move" | "done" | "chat" | "need-trello" }> {
-  const configured = trelloConfigured(env);
-  if (!configured) {
+  const creds = credsOrNull(seat);
+  if (!creds) {
     const line =
       intent.type === "add" ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE;
     return { board: emptyRaBoard(), line, did: intent.type === "chat" ? "chat" : "need-trello" };
   }
-  let board = await loadRaBoard(env, fetchImpl);
+  let board = await loadRaBoard(seat, fetchImpl);
   if (intent.type === "list" || intent.type === "chat") {
     return { board, line: boardLine(board), did: intent.type };
   }
   if (intent.type === "add") {
     const list = intent.listHint ? matchList(board, intent.listHint) : inboxList(board);
     if (!list) return { board, line: "Ra no tiene columnas.", did: "add" };
-    await addRaCard(intent.title, list.id, env, fetchImpl);
-    board = await loadRaBoard(env, fetchImpl);
+    await addRaCard(intent.title, list.id, seat, fetchImpl);
+    board = await loadRaBoard(seat, fetchImpl);
     return { board, line: `Anoté «${intent.title}» en ${list.name}.`, did: "add" };
   }
   if (intent.type === "move") {
     const card = matchCard(board, intent.title);
     const list = matchList(board, intent.listHint);
     if (!card || !list) return { board, line: "No lo encuentro.", did: "move" };
-    await moveRaCard(card.id, list.id, env, fetchImpl);
-    board = await loadRaBoard(env, fetchImpl);
+    await moveRaCard(card.id, list.id, seat, fetchImpl);
+    board = await loadRaBoard(seat, fetchImpl);
     return { board, line: `«${card.name}» → ${list.name}.`, did: "move" };
   }
   const card = matchCard(board, intent.title);
   if (!card) return { board, line: "No lo encuentro.", did: "done" };
-  await doneRaCard(card.id, board, env, fetchImpl);
-  board = await loadRaBoard(env, fetchImpl);
+  await doneRaCard(card.id, board, seat, fetchImpl);
+  board = await loadRaBoard(seat, fetchImpl);
   return { board, line: `Listo: ${card.name}.`, did: "done" };
+}
+
+export function publicTrelloPayload(args: {
+  board: RaBoard;
+  origin?: string;
+  env?: Record<string, string | undefined>;
+  did?: string;
+  line?: string;
+}): Record<string, unknown> {
+  const env = args.env ?? process.env;
+  const key = trelloApiKey(env);
+  const origin = String(args.origin || "").trim();
+  const authorizeUrl =
+    key && origin && !args.board.configured
+      ? trelloAuthorizeUrl({ key, returnUrl: trelloReturnUrl(origin) })
+      : null;
+  return {
+    configured: args.board.configured,
+    board: args.board,
+    line: args.line ?? boardLine(args.board),
+    authorizeUrl,
+    canConnect: Boolean(authorizeUrl),
+    did: args.did,
+  };
+}
+
+export type CompanionTrelloResult = {
+  status: number;
+  body: Record<string, unknown>;
+  session?: CompanionAuthSession;
+};
+
+function requestOrigin(origin: string | undefined): string {
+  return String(origin || "").trim();
+}
+
+export async function handleCompanionTrelloRequest(args: {
+  session: CompanionAuthSession | null;
+  method: "GET" | "POST";
+  body?: unknown;
+  origin?: string;
+  env?: Record<string, string | undefined>;
+  fetchImpl?: typeof fetch;
+}): Promise<CompanionTrelloResult> {
+  if (!args.session) {
+    return { status: 401, body: { error: "UNAUTHENTICATED" } };
+  }
+  const env = args.env ?? process.env;
+  const fetchImpl = args.fetchImpl ?? fetch;
+  const seat: RaSeat = { token: args.session.trelloToken ?? null, env };
+  const origin = requestOrigin(args.origin);
+
+  if (args.method === "GET") {
+    const configured = trelloConfigured(seat.token, env);
+    if (!configured) {
+      const board = emptyRaBoard();
+      return { status: 200, body: publicTrelloPayload({ board, origin, env }) };
+    }
+    try {
+      const board = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board, origin, env }) };
+    } catch {
+      return {
+        status: 502,
+        body: publicTrelloPayload({
+          board: { ...emptyRaBoard(), configured: true },
+          origin,
+          env,
+          line: "Ra no abre.",
+        }),
+      };
+    }
+  }
+
+  const json = args.body && typeof args.body === "object" ? (args.body as Record<string, unknown>) : {};
+  const action = typeof json.action === "string" ? json.action : "";
+
+  if (action === "connect") {
+    const token = typeof json.token === "string" ? json.token.trim() : "";
+    if (!isPlausibleSeatToken(token)) return { status: 400, body: { error: "BAD" } };
+    const creds = seatTrelloCreds(token, env);
+    if (!creds) return { status: 400, body: { error: "NO_HOUSE" } };
+    try {
+      await trelloFetch("/members/me?fields=id", creds, undefined, fetchImpl);
+    } catch {
+      return { status: 400, body: { error: "BAD" } };
+    }
+    const nextSession = withTrelloToken(args.session, token);
+    const nextSeat: RaSeat = { token, env };
+    let board = emptyRaBoard();
+    try {
+      board = await loadRaBoard(nextSeat, fetchImpl);
+    } catch {
+      board = { ...emptyRaBoard(), configured: true };
+    }
+    return {
+      status: 200,
+      body: publicTrelloPayload({ board, origin, env, did: "connect", line: "Listo, ya está." }),
+      session: nextSession,
+    };
+  }
+
+  if (!trelloConfigured(seat.token, env)) {
+    if (action === "add" || action === "move" || action === "done" || action === "archive" || action === "color") {
+      return {
+        status: 200,
+        body: publicTrelloPayload({
+          board: emptyRaBoard(),
+          origin,
+          env,
+          did: "need-trello",
+          line: action === "add" ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE,
+        }),
+      };
+    }
+    const text =
+      typeof json.text === "string" ? json.text : typeof json.title === "string" ? json.title : "";
+    const applied = await applyRaIntent(parseRaIntent(text), seat, fetchImpl);
+    return {
+      status: 200,
+      body: publicTrelloPayload({
+        board: applied.board,
+        origin,
+        env,
+        did: applied.did,
+        line: applied.line,
+      }),
+    };
+  }
+
+  try {
+    if (action === "add") {
+      const title = typeof json.title === "string" ? json.title.trim() : "";
+      if (!title) return { status: 400, body: { error: "EMPTY" } };
+      const board = await loadRaBoard(seat, fetchImpl);
+      const list =
+        (typeof json.listId === "string" && board.lists.find((l) => l.id === json.listId)) ||
+        (typeof json.listHint === "string" && matchList(board, json.listHint)) ||
+        inboxList(board);
+      if (!list) return { status: 400, body: { error: "NO_LIST" } };
+      await addRaCard(title, list.id, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "add" }) };
+    }
+    if (action === "move") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const listId = typeof json.listId === "string" ? json.listId : "";
+      if (!cardId || !listId) return { status: 400, body: { error: "EMPTY" } };
+      await moveRaCard(cardId, listId, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "move" }) };
+    }
+    if (action === "done") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      if (!cardId) return { status: 400, body: { error: "EMPTY" } };
+      const board = await loadRaBoard(seat, fetchImpl);
+      await doneRaCard(cardId, board, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "done" }) };
+    }
+    if (action === "archive") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      if (!cardId) return { status: 400, body: { error: "EMPTY" } };
+      await archiveRaCard(cardId, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "archive" }) };
+    }
+    if (action === "color") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const feel =
+        parseFeelColor(typeof json.color === "string" ? json.color : "") ||
+        (FEEL_COLOR_IDS.includes(json.color as FeelColor) ? (json.color as FeelColor) : null);
+      if (!cardId || !feel) return { status: 400, body: { error: "EMPTY" } };
+      await colorRaCard(cardId, feel, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "color" }) };
+    }
+    if (action === "intent") {
+      const text = typeof json.text === "string" ? json.text : "";
+      const applied = await applyRaIntent(parseRaIntent(text), seat, fetchImpl);
+      return {
+        status: 200,
+        body: publicTrelloPayload({
+          board: applied.board,
+          origin,
+          env,
+          did: applied.did,
+          line: applied.line,
+        }),
+      };
+    }
+    return { status: 400, body: { error: "UNKNOWN" } };
+  } catch (error) {
+    return { status: 502, body: { error: String(error) } };
+  }
 }

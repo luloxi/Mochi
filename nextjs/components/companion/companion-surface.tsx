@@ -6,6 +6,7 @@ import { CompanionLogin } from "@/components/companion/companion-login";
 import { CompanionApps } from "@/components/companion/companion-apps";
 import {
   COMPANION_DUE_EVENT,
+  COMPANION_OPEN_RA,
   addTodoItem,
   applyNimboClock,
   dueLine,
@@ -20,7 +21,15 @@ import {
 } from "@/lib/companion/companion-core";
 import { type CompanionAuthSession } from "@/lib/companion/auth";
 import { CHAT_WINDOWS, localHelpReply, parseNimboIntent, roleForPetClick } from "@/lib/companion/chats";
-import { RA_MISSING_LINE, type RaBoard } from "@/lib/companion/trello";
+import {
+  RA_MISSING_LINE,
+  archiveCardOnBoard,
+  colorCardOnBoard,
+  moveCardOnBoard,
+  readTrelloTokenFromCallback,
+  type RaBoard,
+} from "@/lib/companion/trello";
+import type { FeelColor } from "@/lib/companion/boards";
 import {
   DEFAULT_TOGETHER_CHANCE,
   DEFAULT_TOGETHER_COOLDOWN_MS,
@@ -59,6 +68,7 @@ export function CompanionSurface() {
   const [nimboLog, setNimboLog] = useState<TalkMsg[]>([]);
   const [helpLog, setHelpLog] = useState<TalkMsg[]>([]);
   const [board, setBoard] = useState<RaBoard>(EMPTY_BOARD);
+  const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null);
   const [mascotAlert, setMascotAlert] = useState<string | null>(null);
   const [pomoOn, setPomoOn] = useState(false);
   const [phoneFoco, setPhoneFoco] = useState(false);
@@ -128,6 +138,7 @@ export function CompanionSurface() {
         configured: json.configured === true || json.board?.configured === true,
       };
       setBoard(next);
+      setAuthorizeUrl(typeof json.authorizeUrl === "string" ? json.authorizeUrl : null);
       saveRaSnapshot(next.cards || []);
       if (!next.configured) {
         setNimboLines((prev) => (prev.length ? prev : [RA_MISSING_LINE]));
@@ -136,6 +147,46 @@ export function CompanionSurface() {
       // keep last
     }
   }, []);
+
+  const connectingRef = useRef(false);
+  useEffect(() => {
+    if (!auth) return;
+    const token = readTrelloTokenFromCallback({
+      hash: window.location.hash,
+      search: window.location.search,
+    });
+    if (!token || connectingRef.current) return;
+    connectingRef.current = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/companion/trello", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "connect", token }),
+        });
+        const json = await res.json().catch(() => null);
+        if (json?.board) {
+          const next: RaBoard = {
+            ...EMPTY_BOARD,
+            ...(json.board || {}),
+            configured: json.configured === true || json.board?.configured === true,
+          };
+          setBoard(next);
+          saveRaSnapshot(next.cards || []);
+        } else {
+          void pullBoard();
+        }
+        if (typeof json?.authorizeUrl === "string") setAuthorizeUrl(json.authorizeUrl);
+        else setAuthorizeUrl(null);
+      } finally {
+        const url = new URL(window.location.href);
+        url.hash = "";
+        url.searchParams.delete("token");
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      }
+    })();
+  }, [auth, pullBoard]);
 
   useEffect(() => {
     if (!auth) return;
@@ -420,9 +471,14 @@ export function CompanionSurface() {
       ) : null}
 
       {auth && !board.configured ? (
-        <p className="ra-status" data-ra-status>
+        <button
+          type="button"
+          className="ra-status"
+          data-ra-status
+          onClick={() => window.dispatchEvent(new Event(COMPANION_OPEN_RA))}
+        >
           {RA_MISSING_LINE}
-        </p>
+        </button>
       ) : null}
 
       {auth ? (
@@ -434,8 +490,88 @@ export function CompanionSurface() {
       {auth ? (
         <CompanionApps
           board={board}
-          onRaAdd={(title) => void sendNimbo(`agregá ${title}`)}
-          onRaDone={(title) => void sendNimbo(`listo ${title}`)}
+          seat={auth.personId}
+          authorizeUrl={authorizeUrl}
+          onRaAdd={(title, listId) => {
+            void fetch("/api/companion/trello", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "add", title, listId }),
+            })
+              .then((res) => res.json())
+              .then((json) => {
+                if (json?.did === "need-trello") addTodoItem(title);
+                if (json?.board) {
+                  const next = { ...EMPTY_BOARD, ...json.board };
+                  setBoard(next);
+                  saveRaSnapshot(next.cards || []);
+                } else void pullBoard();
+              })
+              .catch(() => addTodoItem(title));
+          }}
+          onRaMove={(cardId, listId) => {
+            setBoard((prev) => moveCardOnBoard(prev, cardId, listId));
+            void fetch("/api/companion/trello", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "move", cardId, listId }),
+            })
+              .then((res) => res.json())
+              .then((json) => {
+                if (json?.board) {
+                  const next = { ...EMPTY_BOARD, ...json.board };
+                  setBoard(next);
+                  saveRaSnapshot(next.cards || []);
+                }
+              })
+              .catch(() => void pullBoard());
+          }}
+          onRaDone={(cardId) => {
+            void fetch("/api/companion/trello", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "done", cardId }),
+            })
+              .then((res) => res.json())
+              .then((json) => {
+                if (json?.board) {
+                  const next = { ...EMPTY_BOARD, ...json.board };
+                  setBoard(next);
+                  saveRaSnapshot(next.cards || []);
+                } else void pullBoard();
+              })
+              .catch(() => void pullBoard());
+          }}
+          onRaColor={(cardId, color: FeelColor) => {
+            setBoard((prev) => colorCardOnBoard(prev, cardId, color));
+            void fetch("/api/companion/trello", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "color", cardId, color }),
+            }).catch(() => void pullBoard());
+          }}
+          onRaArchive={(cardId) => {
+            setBoard((prev) => archiveCardOnBoard(prev, cardId));
+            void fetch("/api/companion/trello", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "archive", cardId }),
+            })
+              .then((res) => res.json())
+              .then((json) => {
+                if (json?.board) {
+                  const next = { ...EMPTY_BOARD, ...json.board };
+                  setBoard(next);
+                  saveRaSnapshot(next.cards || []);
+                }
+              })
+              .catch(() => void pullBoard());
+          }}
           onFoco={setPhoneFoco}
         />
       ) : null}

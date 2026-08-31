@@ -4,6 +4,7 @@ import {
   COMPANION_SESSION_COOKIE,
   encodeCompanionSession,
   googleClientId,
+  publicCompanionSession,
   readGoogleIdTokenEmail,
   sessionCookieOptions,
 } from "@/lib/companion/auth";
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.reason }, { status });
   }
   const token = encodeCompanionSession(result.session);
-  const response = NextResponse.json({ session: result.session });
+  const response = NextResponse.json({ session: publicCompanionSession(result.session) });
   response.cookies.set(COMPANION_SESSION_COOKIE, token, sessionCookieOptions());
   return response;
 }
