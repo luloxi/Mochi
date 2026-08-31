@@ -65,7 +65,6 @@ import {
   RA_CONNECT_JARGON,
   RA_MISSING_LINE,
   applyRaIntent,
-  handleCompanionTrelloRequest,
   parseRaIntent,
   readTrelloTokenFromCallback,
   trelloAuthorizeUrl,
@@ -74,6 +73,7 @@ import {
   type RaBoard,
 } from "./trello";
 import { NIMBO_SPRITE_BASE, spriteUrl } from "./shimeji-engine";
+import { handleCompanionTrelloRequest } from "./trello-api";
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres)\b/i;
 
@@ -616,6 +616,10 @@ describe("first paint desk + bubbles + in-app llm", () => {
     const blob = `${trelloSrc}\n${authSrc}\n${trelloRoute}\n${surface}\n${apps}`;
     assert.doesNotMatch(blob, /TRELLO_TOKEN\s*=\s*["'][^"']+["']/);
     assert.doesNotMatch(blob, /<iframe[^>]+trello/i);
+    assert.doesNotMatch(trelloSrc, /from ["']\.\/auth["']/);
+    assert.doesNotMatch(trelloSrc, /node:crypto/);
+    assert.doesNotMatch(apps, /trello-api/);
+    assert.doesNotMatch(surface, /trello-api/);
     assert.match(surface, /data-desk-faces/);
     assert.match(surface, /data-ra-launcher|CompanionApps/);
     assert.match(surface, /data-talk-never-hide/);

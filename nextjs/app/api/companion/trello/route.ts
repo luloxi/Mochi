@@ -5,7 +5,7 @@ import {
   restoreCompanionSession,
   sessionCookieOptions,
 } from "@/lib/companion/auth";
-import { handleCompanionTrelloRequest } from "@/lib/companion/trello";
+import { handleCompanionTrelloRequest } from "@/lib/companion/trello-api";
 
 export const runtime = "nodejs";
 
