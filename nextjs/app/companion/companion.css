@@ -1024,3 +1024,70 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
     max-height: 22dvh;
   }
 }
+
+.board-feel.is-on {
+  box-shadow: 3px 3px 0 var(--c-ink);
+}
+
+.board-card-title {
+  display: block;
+}
+
+.board-card-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.ra-card-sheet {
+  margin-top: 10px;
+  border: 2px solid var(--c-ink);
+  border-radius: 12px;
+  background: #fff8ee;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ra-card-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ra-field textarea,
+.ra-field input,
+.ra-field select {
+  border: 2px solid var(--c-ink);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 8px;
+}
+
+.ra-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ra-links a {
+  color: var(--c-ink);
+}

@@ -24,6 +24,13 @@ export const RA_MISSING_LINE = "Ra no está.";
 
 export type RaLabel = { id: string; name: string; color: string | null };
 export type RaList = { id: string; name: string; pos: number };
+export type RaMember = {
+  id: string;
+  fullName: string;
+  username: string;
+  initials?: string;
+};
+export type RaLink = { id: string; name: string; url: string };
 export type RaCard = {
   id: string;
   name: string;
@@ -32,14 +39,20 @@ export type RaCard = {
   pos: number;
   due: string | null;
   dueComplete?: boolean;
+  desc: string;
   labels: RaLabel[];
   feel: FeelColor | null;
+  idMembers: string[];
+  members: RaMember[];
+  links: RaLink[];
+  url: string | null;
 };
 export type RaBoard = {
   id: string;
   name: string;
   lists: RaList[];
   cards: RaCard[];
+  members: RaMember[];
   configured: boolean;
 };
 
@@ -133,7 +146,7 @@ function credsOrNull(seat: RaSeat = {}): TrelloCreds | null {
 }
 
 export function emptyRaBoard(): RaBoard {
-  return { id: RA_BOARD_ID, name: RA_BOARD_NAME, lists: [], cards: [], configured: false };
+  return { id: RA_BOARD_ID, name: RA_BOARD_NAME, lists: [], cards: [], members: [], configured: false };
 }
 
 export function isDoneListName(name: string): boolean {
@@ -170,11 +183,32 @@ export function boardLine(board: RaBoard): string {
 }
 
 export function feelFromLabels(labels: RaLabel[] | undefined): FeelColor | null {
+  const mapped: FeelColor[] = [];
   for (const label of labels || []) {
     const c = String(label.color || "").toLowerCase();
-    if (c && TRELLO_TO_FEEL[c]) return TRELLO_TO_FEEL[c];
+    const feel = TRELLO_TO_FEEL[c];
+    if (feel && !mapped.includes(feel)) mapped.push(feel);
   }
-  return null;
+  for (const feel of ["blue", "purple", "red", "orange", "yellow", "green"] as FeelColor[]) {
+    if (mapped.includes(feel)) return feel;
+  }
+  return mapped[0] || null;
+}
+
+function mapMember(raw: {
+  id?: string;
+  fullName?: string;
+  username?: string;
+  initials?: string;
+}): RaMember | null {
+  const id = String(raw?.id || "").trim();
+  if (!id) return null;
+  return {
+    id,
+    fullName: String(raw.fullName || raw.username || ""),
+    username: String(raw.username || ""),
+    initials: raw.initials ? String(raw.initials) : undefined,
+  };
 }
 
 export function mapRaCard(raw: {
@@ -185,11 +219,31 @@ export function mapRaCard(raw: {
   pos?: number;
   due?: string | null;
   dueComplete?: boolean;
+  desc?: string | null;
+  url?: string | null;
+  shortUrl?: string | null;
+  idMembers?: string[];
   labels?: Array<{ id: string; name: string; color: string | null }>;
+  members?: Array<{ id?: string; fullName?: string; username?: string; initials?: string }>;
+  attachments?: Array<{ id?: string; name?: string; url?: string }>;
 }): RaCard {
   const labels = Array.isArray(raw.labels)
     ? raw.labels.map((l) => ({ id: l.id, name: l.name, color: l.color ?? null }))
     : [];
+  const members = (raw.members || []).map(mapMember).filter((row): row is RaMember => !!row);
+  const idMembers = Array.isArray(raw.idMembers)
+    ? raw.idMembers.map((id) => String(id)).filter(Boolean)
+    : members.map((row) => row.id);
+  const links: RaLink[] = [];
+  for (const row of raw.attachments || []) {
+    const url = String(row.url || "").trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    links.push({
+      id: String(row.id || url),
+      name: String(row.name || url),
+      url,
+    });
+  }
   return {
     id: raw.id,
     name: raw.name,
@@ -198,8 +252,13 @@ export function mapRaCard(raw: {
     pos: raw.pos ?? 0,
     due: raw.due || null,
     dueComplete: !!raw.dueComplete,
+    desc: String(raw.desc || ""),
     labels,
     feel: feelFromLabels(labels),
+    idMembers,
+    members,
+    links,
+    url: raw.shortUrl || raw.url || null,
   };
 }
 
@@ -213,7 +272,15 @@ export function moveCardOnBoard(board: RaBoard, cardId: string, listId: string):
 export function colorCardOnBoard(board: RaBoard, cardId: string, feel: FeelColor): RaBoard {
   return {
     ...board,
-    cards: board.cards.map((card) => (card.id === cardId ? { ...card, feel } : card)),
+    cards: board.cards.map((card) =>
+      card.id === cardId
+        ? {
+            ...card,
+            feel,
+            labels: [{ id: feel, name: feel, color: feel }],
+          }
+        : card,
+    ),
   };
 }
 
@@ -221,6 +288,47 @@ export function archiveCardOnBoard(board: RaBoard, cardId: string): RaBoard {
   return {
     ...board,
     cards: board.cards.map((card) => (card.id === cardId ? { ...card, closed: true } : card)),
+  };
+}
+
+export function describeCardOnBoard(board: RaBoard, cardId: string, desc: string): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) => (card.id === cardId ? { ...card, desc } : card)),
+  };
+}
+
+export function dueCardOnBoard(board: RaBoard, cardId: string, due: string | null): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) => (card.id === cardId ? { ...card, due, dueComplete: false } : card)),
+  };
+}
+
+export function assignCardOnBoard(board: RaBoard, cardId: string, memberId: string | null): RaBoard {
+  const member = memberId ? board.members.find((row) => row.id === memberId) : null;
+  return {
+    ...board,
+    cards: board.cards.map((card) =>
+      card.id === cardId
+        ? {
+            ...card,
+            idMembers: memberId ? [memberId] : [],
+            members: member ? [member] : [],
+          }
+        : card,
+    ),
+  };
+}
+
+export function linkCardOnBoard(board: RaBoard, cardId: string, link: RaLink): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) =>
+      card.id === cardId && !card.links.some((row) => row.url === link.url)
+        ? { ...card, links: [...card.links, link] }
+        : card,
+    ),
   };
 }
 
@@ -420,20 +528,36 @@ export async function loadRaBoard(
         pos: number;
         due: string | null;
         dueComplete?: boolean;
+        desc?: string | null;
+        url?: string | null;
+        shortUrl?: string | null;
+        idMembers?: string[];
         labels?: Array<{ id: string; name: string; color: string | null }>;
+        members?: Array<{ id?: string; fullName?: string; username?: string; initials?: string }>;
+        attachments?: Array<{ id?: string; name?: string; url?: string }>;
       }>
     >(
-      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete,labels`,
+      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete,labels,desc,idMembers,url,shortUrl&members=true&member_fields=fullName,username,initials&attachments=true&attachment_fields=url,name,id`,
       creds,
       undefined,
       fetchImpl,
     ),
   ]);
+  let members: RaMember[] = [];
+  try {
+    const rawMembers = await trelloFetch<
+      Array<{ id?: string; fullName?: string; username?: string; initials?: string }>
+    >(`/boards/${RA_BOARD_ID}/members?fields=fullName,username,initials`, creds, undefined, fetchImpl);
+    members = rawMembers.map(mapMember).filter((row): row is RaMember => !!row);
+  } catch {
+    members = [];
+  }
   return {
     id: RA_BOARD_ID,
     name: RA_BOARD_NAME,
     lists: lists.map((l) => ({ id: l.id, name: l.name, pos: l.pos })),
     cards: cards.map((c) => mapRaCard(c)),
+    members,
     configured: true,
   };
 }
@@ -526,6 +650,64 @@ export async function colorRaCard(
     );
   }
   await trelloFetch(`/cards/${cardId}?idLabels=${encodeURIComponent(label.id)}`, creds, { method: "PUT" }, fetchImpl);
+}
+
+export async function describeRaCard(
+  cardId: string,
+  desc: string,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  await trelloFetch(
+    `/cards/${cardId}?desc=${encodeURIComponent(desc.slice(0, 16000))}`,
+    creds,
+    { method: "PUT" },
+    fetchImpl,
+  );
+}
+
+export async function dueRaCard(
+  cardId: string,
+  due: string | null,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  const value = due ? encodeURIComponent(due) : "";
+  await trelloFetch(`/cards/${cardId}?due=${value}`, creds, { method: "PUT" }, fetchImpl);
+}
+
+export async function assignRaCard(
+  cardId: string,
+  memberId: string | null,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  const value = memberId ? encodeURIComponent(memberId) : "";
+  await trelloFetch(`/cards/${cardId}?idMembers=${value}`, creds, { method: "PUT" }, fetchImpl);
+}
+
+export async function linkRaCard(
+  cardId: string,
+  url: string,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  const href = String(url || "").trim();
+  if (!/^https?:\/\//i.test(href)) throw new Error("BAD_LINK");
+  await trelloFetch(
+    `/cards/${cardId}/attachments?url=${encodeURIComponent(href.slice(0, 1800))}`,
+    creds,
+    { method: "POST" },
+    fetchImpl,
+  );
 }
 
 export async function applyRaIntent(

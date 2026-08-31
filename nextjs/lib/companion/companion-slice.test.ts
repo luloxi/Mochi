@@ -63,12 +63,31 @@ import {
   statusFromHeartbeat,
   zonesAreApart,
 } from "./presence";
-import { boardLegendLine } from "./boards";
+import { FEEL_COLOR_IDS, FEEL_COLORS, boardLegendLine } from "./boards";
+import {
+  ARCHIVE_SHORTCUT,
+  HOUSE_COLOR_LABELS,
+  HOUSE_COLOR_ORDER,
+  TOP_ARCHIVE_Y,
+  assigneeLine,
+  dragHitsArchive,
+  formatHouseDue,
+  parseHouseShortcut,
+  personFromMemberName,
+} from "./house";
 import { NIMBO_NAME, NIMBO_SOUL, extractLlmText, localNimboReply, pickLlmProvider } from "./llm";
 import {
   RA_CONNECT_JARGON,
   RA_MISSING_LINE,
   applyRaIntent,
+  assignCardOnBoard,
+  colorCardOnBoard,
+  describeCardOnBoard,
+  dueCardOnBoard,
+  emptyRaBoard,
+  feelFromLabels,
+  linkCardOnBoard,
+  mapRaCard,
   parseRaIntent,
   readTrelloTokenFromCallback,
   trelloAuthorizeUrl,
@@ -878,5 +897,263 @@ describe("throw slow vs fast", () => {
     tickShimeji(hold, bounds, scale, null, null);
     assert.equal(hold.isDragging, true);
     assert.equal(hold.state, State.DRAGGED);
+  });
+});
+
+describe("house colors + archive shortcut + drag top", () => {
+  it("Tano color order is azul, violeta, rojo, naranja, amarillo, verde; one color per card", () => {
+    assert.deepEqual(HOUSE_COLOR_ORDER, ["blue", "purple", "red", "orange", "yellow", "green"]);
+    assert.deepEqual(FEEL_COLOR_IDS, HOUSE_COLOR_ORDER);
+    assert.deepEqual(HOUSE_COLOR_LABELS, ["azul", "violeta", "rojo", "naranja", "amarillo", "verde"]);
+    assert.equal(FEEL_COLORS.blue.label, "azul");
+    assert.equal(FEEL_COLORS.purple.label, "violeta");
+    const mixed = feelFromLabels([
+      { id: "r", name: "rojo", color: "red" },
+      { id: "b", name: "azul", color: "blue" },
+    ]);
+    assert.equal(mixed, "blue");
+    const board: RaBoard = {
+      ...emptyRaBoard(),
+      configured: true,
+      lists: [{ id: "l1", name: "Hoy", pos: 1 }],
+      cards: [
+        mapRaCard({
+          id: "c1",
+          name: "pan",
+          idList: "l1",
+          labels: [
+            { id: "r", name: "rojo", color: "red" },
+            { id: "g", name: "verde", color: "green" },
+          ],
+        }),
+      ],
+    };
+    const painted = colorCardOnBoard(board, "c1", "purple");
+    assert.equal(painted.cards[0].feel, "purple");
+    assert.equal(painted.cards[0].labels.length, 1);
+    assert.equal(painted.cards[0].labels[0].color, "purple");
+  });
+
+  it("drag to the very top archives; desktop e archives and 1-6 paint Tano colors", () => {
+    assert.equal(dragHitsArchive(10), true);
+    assert.equal(dragHitsArchive(TOP_ARCHIVE_Y - 1), true);
+    assert.equal(dragHitsArchive(TOP_ARCHIVE_Y), false);
+    assert.equal(dragHitsArchive(200), false);
+    assert.equal(ARCHIVE_SHORTCUT, "e");
+    assert.equal(parseHouseShortcut({ key: "e" }).type, "archive");
+    assert.equal(parseHouseShortcut({ key: "E" }).type, "archive");
+    assert.deepEqual(parseHouseShortcut({ key: "1" }), { type: "color", color: "blue" });
+    assert.deepEqual(parseHouseShortcut({ key: "2" }), { type: "color", color: "purple" });
+    assert.deepEqual(parseHouseShortcut({ key: "3" }), { type: "color", color: "red" });
+    assert.deepEqual(parseHouseShortcut({ key: "4" }), { type: "color", color: "orange" });
+    assert.deepEqual(parseHouseShortcut({ key: "5" }), { type: "color", color: "yellow" });
+    assert.deepEqual(parseHouseShortcut({ key: "6" }), { type: "color", color: "green" });
+    assert.equal(parseHouseShortcut({ key: "e", target: { tagName: "INPUT" } }).type, "none");
+    assert.equal(parseHouseShortcut({ key: "1", target: { tagName: "TEXTAREA" } }).type, "none");
+    assert.equal(parseHouseShortcut({ key: "e", metaKey: true }).type, "none");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    assert.match(apps, /parseHouseShortcut/);
+    assert.match(apps, /dragHitsArchive/);
+    assert.match(apps, /data-house-shortcut/);
+    assert.match(apps, /data-ra-archive/);
+    assert.match(apps, /HOUSE_COLOR_ORDER/);
+    assert.doesNotMatch(apps, /trello\.com\/embed/i);
+    assert.doesNotMatch(apps, /<iframe[^>]+trello/i);
+  });
+});
+
+describe("house card details", () => {
+  it("maps description, links, dates and responsable Katho/Lulox", () => {
+    const card = mapRaCard({
+      id: "c1",
+      name: "turno",
+      idList: "l1",
+      desc: "llevar DNI",
+      due: "2026-09-02T12:00:00.000Z",
+      idMembers: ["m-katho"],
+      members: [{ id: "m-katho", fullName: "Kathonejo", username: "kathonejo" }],
+      attachments: [{ id: "a1", name: "nota", url: "https://example.com/nota" }],
+    });
+    assert.equal(card.desc, "llevar DNI");
+    assert.equal(formatHouseDue(card.due), "2026-09-02");
+    assert.equal(card.links[0].url, "https://example.com/nota");
+    assert.equal(personFromMemberName("Kathonejo", "kathonejo"), "katho");
+    assert.equal(personFromMemberName("Luciano Oliva", "luloxi"), "lulox");
+    assert.equal(assigneeLine(card.members[0]), "Katho");
+    let board: RaBoard = {
+      ...emptyRaBoard(),
+      configured: true,
+      members: [
+        { id: "m-katho", fullName: "Kathonejo", username: "kathonejo" },
+        { id: "m-lulox", fullName: "Lulox", username: "luloxi" },
+      ],
+      cards: [card],
+    };
+    board = describeCardOnBoard(board, "c1", "otra cosa");
+    board = dueCardOnBoard(board, "c1", "2026-09-10T12:00:00.000Z");
+    board = assignCardOnBoard(board, "c1", "m-lulox");
+    board = linkCardOnBoard(board, "c1", { id: "a2", name: "doc", url: "https://example.com/doc" });
+    assert.equal(board.cards[0].desc, "otra cosa");
+    assert.equal(formatHouseDue(board.cards[0].due), "2026-09-10");
+    assert.equal(assigneeLine(board.cards[0].members[0]), "Lulox");
+    assert.ok(board.cards[0].links.some((row) => row.url === "https://example.com/doc"));
+    const here = dirname(fileURLToPath(import.meta.url));
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    assert.match(apps, /data-ra-detail/);
+    assert.match(apps, /aria-label="descripción"/);
+    assert.match(apps, /aria-label="fecha"/);
+    assert.match(apps, /aria-label="responsable"/);
+    assert.match(apps, /aria-label="link"/);
+    assert.match(apps, /parseHouseShortcut/);
+  });
+
+  it("connected seat can color, archive, describe, date, assign and link", async () => {
+    const lists = [
+      { id: "l1", name: "Hacer", pos: 1 },
+      { id: "l2", name: "Listo", pos: 2 },
+    ];
+    const members = [
+      { id: "m-katho", fullName: "Kathonejo", username: "kathonejo" },
+      { id: "m-lulox", fullName: "Lulox", username: "luloxi" },
+    ];
+    const cards: Array<Record<string, unknown>> = [
+      {
+        id: "c1",
+        name: "pan",
+        idList: "l1",
+        closed: false,
+        pos: 1,
+        due: null,
+        desc: "",
+        idMembers: [],
+        labels: [],
+        members: [],
+        attachments: [],
+      },
+    ];
+    const labels: Array<{ id: string; name: string; color: string | null }> = [];
+    const urls: string[] = [];
+    const fetchImpl: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("/members/me")) return new Response(JSON.stringify({ id: "me" }), { status: 200 });
+      if (url.includes("/members?")) return new Response(JSON.stringify(members), { status: 200 });
+      if (url.includes("/lists")) return new Response(JSON.stringify(lists), { status: 200 });
+      if (url.includes("/labels") && (!init || !init.method || init.method === "GET")) {
+        return new Response(JSON.stringify(labels), { status: 200 });
+      }
+      if (url.includes("/labels") && init?.method === "POST") {
+        const u = new URL(url);
+        const row = { id: `lab-${labels.length + 1}`, name: u.searchParams.get("name") || "", color: u.searchParams.get("color") };
+        labels.push(row);
+        return new Response(JSON.stringify(row), { status: 200 });
+      }
+      if (url.includes("/attachments") && init?.method === "POST") {
+        const u = new URL(url);
+        const href = u.searchParams.get("url") || "";
+        const card = cards[0] as { attachments: Array<{ id: string; name: string; url: string }> };
+        card.attachments.push({ id: "a1", name: href, url: href });
+        return new Response(JSON.stringify({ id: "a1", url: href, name: href }), { status: 200 });
+      }
+      if (url.includes("/cards?") && url.includes("filter=open") && (!init || !init.method || init.method === "GET")) {
+        return new Response(JSON.stringify(cards), { status: 200 });
+      }
+      if (url.includes("/cards/") && init?.method === "PUT") {
+        const id = url.split("/cards/")[1].split("?")[0].split("/")[0];
+        const u = new URL(url);
+        const card = cards.find((c) => c.id === id) as Record<string, unknown> | undefined;
+        if (card && u.searchParams.get("idList")) card.idList = u.searchParams.get("idList");
+        if (card && u.searchParams.get("closed") === "true") card.closed = true;
+        if (card && u.searchParams.has("desc")) card.desc = u.searchParams.get("desc");
+        if (card && u.searchParams.has("due")) card.due = u.searchParams.get("due") || null;
+        if (card && u.searchParams.has("idMembers")) {
+          const mid = u.searchParams.get("idMembers") || "";
+          card.idMembers = mid ? [mid] : [];
+          card.members = mid ? members.filter((m) => m.id === mid) : [];
+        }
+        if (card && u.searchParams.has("idLabels")) {
+          const lid = u.searchParams.get("idLabels");
+          const lab = labels.find((row) => row.id === lid);
+          card.labels = lab ? [lab] : [];
+        }
+        return new Response(JSON.stringify(card || {}), { status: 200 });
+      }
+      return new Response("no", { status: 404 });
+    }) as typeof fetch;
+
+    const env = { TRELLO_API_KEY: "k", TRELLO_TOKEN: "ENV_SECRET" };
+    const userToken = "e".repeat(64);
+    const connected = withTrelloToken(createCompanionSession(KATHO_GOOGLE_EMAIL)!, userToken);
+    const origin = "https://mochiagents.vercel.app";
+
+    const colored = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "color", cardId: "c1", color: "azul" },
+      origin,
+      env,
+      fetchImpl,
+    });
+    assert.equal(colored.body.did, "color");
+    const board = colored.body.board as RaBoard;
+    assert.equal(board.cards[0].feel, "blue");
+    assert.equal(board.cards[0].labels.length, 1);
+
+    const described = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "desc", cardId: "c1", desc: "comprar pan integral" },
+      origin,
+      env,
+      fetchImpl,
+    });
+    assert.equal(described.body.did, "desc");
+    assert.equal((described.body.board as RaBoard).cards[0].desc, "comprar pan integral");
+
+    const dated = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "due", cardId: "c1", due: "2026-09-02T12:00:00.000Z" },
+      origin,
+      env,
+      fetchImpl,
+    });
+    assert.equal(dated.body.did, "due");
+    assert.equal(formatHouseDue((dated.body.board as RaBoard).cards[0].due), "2026-09-02");
+
+    const assigned = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "assign", cardId: "c1", memberId: "m-lulox" },
+      origin,
+      env,
+      fetchImpl,
+    });
+    assert.equal(assigned.body.did, "assign");
+    assert.equal(assigneeLine((assigned.body.board as RaBoard).cards[0].members[0]), "Lulox");
+
+    const linked = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "link", cardId: "c1", url: "https://example.com/pan" },
+      origin,
+      env,
+      fetchImpl,
+    });
+    assert.equal(linked.body.did, "link");
+    assert.ok((linked.body.board as RaBoard).cards[0].links.some((row) => row.url === "https://example.com/pan"));
+
+    const archived = await handleCompanionTrelloRequest({
+      session: connected,
+      method: "POST",
+      body: { action: "archive", cardId: "c1" },
+      origin,
+      env,
+      fetchImpl,
+    });
+    assert.equal(archived.body.did, "archive");
+    assert.ok(urls.every((url) => !url.includes("ENV_SECRET")));
+    assert.ok(urls.some((url) => url.includes(`token=${userToken}`)));
   });
 });

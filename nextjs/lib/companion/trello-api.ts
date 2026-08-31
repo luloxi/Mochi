@@ -12,10 +12,14 @@ import {
   addRaCard,
   applyRaIntent,
   archiveRaCard,
+  assignRaCard,
   colorRaCard,
+  describeRaCard,
   doneRaCard,
+  dueRaCard,
   emptyRaBoard,
   inboxList,
+  linkRaCard,
   loadRaBoard,
   matchList,
   moveRaCard,
@@ -94,7 +98,7 @@ export async function handleCompanionTrelloRequest(args: {
   }
 
   if (!trelloConfigured(seat.token, env)) {
-    if (action === "add" || action === "move" || action === "done" || action === "archive" || action === "color") {
+    if (action === "add" || action === "move" || action === "done" || action === "archive" || action === "color" || action === "desc" || action === "due" || action === "assign" || action === "link") {
       return {
         status: 200,
         body: publicTrelloPayload({
@@ -167,6 +171,43 @@ export async function handleCompanionTrelloRequest(args: {
       await colorRaCard(cardId, feel, seat, fetchImpl);
       const next = await loadRaBoard(seat, fetchImpl);
       return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "color" }) };
+    }
+    if (action === "desc") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const desc = typeof json.desc === "string" ? json.desc : "";
+      if (!cardId) return { status: 400, body: { error: "EMPTY" } };
+      await describeRaCard(cardId, desc, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "desc" }) };
+    }
+    if (action === "due") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const due = json.due === null || json.due === "" ? null : typeof json.due === "string" ? json.due : null;
+      if (!cardId) return { status: 400, body: { error: "EMPTY" } };
+      await dueRaCard(cardId, due, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "due" }) };
+    }
+    if (action === "assign") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const memberId =
+        json.memberId === null || json.memberId === ""
+          ? null
+          : typeof json.memberId === "string"
+            ? json.memberId
+            : null;
+      if (!cardId) return { status: 400, body: { error: "EMPTY" } };
+      await assignRaCard(cardId, memberId, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "assign" }) };
+    }
+    if (action === "link") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const url = typeof json.url === "string" ? json.url.trim() : "";
+      if (!cardId || !url) return { status: 400, body: { error: "EMPTY" } };
+      await linkRaCard(cardId, url, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "link" }) };
     }
     if (action === "intent") {
       const text = typeof json.text === "string" ? json.text : "";

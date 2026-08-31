@@ -17,7 +17,7 @@ export const FEEL_COLORS: Record<
   purple: { hex: "#8a5cc8", phrase: "trámite", scale: "off-scale", label: "violeta" },
 };
 
-export const FEEL_COLOR_IDS: FeelColor[] = ["red", "orange", "yellow", "green", "blue", "purple"];
+export const FEEL_COLOR_IDS: FeelColor[] = ["blue", "purple", "red", "orange", "yellow", "green"];
 
 export function boardLegendLine(): string {
   return "rojo se pudre · naranja hay que hacerlo · amarillo idea/someday · verde parked · azul coordinar · violeta trámite";

@@ -7,6 +7,7 @@ import {
   RA_APPS,
   addTodoItem,
   applyNimboClock,
+  extractHttpUrl,
   loadOpenApps,
   loadPomo,
   loadTodos,
@@ -18,7 +19,16 @@ import {
   type RaAppId,
   type TodoItem,
 } from "@/lib/companion/companion-core";
-import { FEEL_COLOR_IDS, type FeelColor } from "@/lib/companion/boards";
+import { FEEL_COLORS, type FeelColor } from "@/lib/companion/boards";
+import {
+  HOUSE_COLOR_ORDER,
+  TOP_ARCHIVE_Y,
+  assigneeLine,
+  dragHitsArchive,
+  formatHouseDue,
+  parseHouseShortcut,
+  type HouseCardPatch,
+} from "@/lib/companion/house";
 import { RADIO_STATIONS, radioStationById, type RadioStationId } from "@/lib/companion/radio";
 import { extractYouTubeId, youtubeEmbedUrl } from "@/lib/companion/youtube";
 import { emptyRaBoard, raConnectWizard, type RaBoard } from "@/lib/companion/trello";
@@ -323,33 +333,86 @@ function RaWizard({
   );
 }
 
+function ColorDots({
+  current,
+  onPick,
+}: {
+  current: FeelColor | null;
+  onPick: (color: FeelColor) => void;
+}) {
+  return (
+    <div className="feel-dots" role="group" aria-label="color" data-house-colors={HOUSE_COLOR_ORDER.join(",")}>
+      {HOUSE_COLOR_ORDER.map((color, i) => (
+        <button
+          key={color}
+          type="button"
+          className={`feel-dot board-feel-${color}${current === color ? " is-on" : ""}`}
+          aria-label={`${i + 1} ${FEEL_COLORS[color].label}`}
+          data-house-color={color}
+          title={`${i + 1} ${FEEL_COLORS[color].label}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => onPick(color)}
+        />
+      ))}
+    </div>
+  );
+}
+
 function RaPane({
   board,
   seat,
   authorizeUrl,
+  phone,
   onAdd,
   onMove,
   onDone,
   onColor,
   onArchive,
+  onHouse,
 }: {
   board: RaBoard;
   seat: PersonId;
   authorizeUrl: string | null;
+  phone: boolean;
   onAdd: (title: string, listId?: string) => void;
   onMove: (cardId: string, listId: string) => void;
   onDone: (cardId: string) => void;
   onColor: (cardId: string, color: FeelColor) => void;
   onArchive: (cardId: string) => void;
+  onHouse: (patch: HouseCardPatch) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [drag, setDrag] = useState<RaDrag | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [descDraft, setDescDraft] = useState("");
+  const [linkDraft, setLinkDraft] = useState("");
   const colRefs = useRef<Map<string, HTMLElement>>(new Map());
   const dragRef = useRef<RaDrag | null>(null);
 
   useEffect(() => {
     dragRef.current = drag;
   }, [drag]);
+
+  const openCard = board.cards.find((card) => card.id === openId && !card.closed) || null;
+
+  useEffect(() => {
+    setDescDraft(openCard?.desc || "");
+    setLinkDraft("");
+  }, [openCard?.id, openCard?.desc]);
+
+  useEffect(() => {
+    if (phone) return;
+    function onKey(event: KeyboardEvent) {
+      const action = parseHouseShortcut(event);
+      if (action.type === "none" || !selectedId) return;
+      event.preventDefault();
+      if (action.type === "archive") onArchive(selectedId);
+      if (action.type === "color") onColor(selectedId, action.color);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phone, selectedId, onArchive, onColor]);
 
   if (!board.configured) {
     return (
@@ -368,7 +431,7 @@ function RaPane({
   }
 
   function onCardDown(event: PointerEvent<HTMLElement>, card: { id: string; name: string; feel: string | null }) {
-    if ((event.target as HTMLElement).closest("button, .feel-dots")) return;
+    if ((event.target as HTMLElement).closest("button, .feel-dots, a, input, textarea, select")) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const next: RaDrag = {
@@ -380,7 +443,7 @@ function RaPane({
       grabX: event.clientX,
       grabY: event.clientY,
       overListId: null,
-      overArchive: event.clientY < 72,
+      overArchive: dragHitsArchive(event.clientY),
     };
     dragRef.current = next;
     setDrag(next);
@@ -388,7 +451,7 @@ function RaPane({
 
   function onCardMove(event: PointerEvent<HTMLElement>) {
     if (!dragRef.current) return;
-    const overArchive = event.clientY < 72;
+    const overArchive = dragHitsArchive(event.clientY);
     const next: RaDrag = {
       ...dragRef.current,
       x: event.clientX,
@@ -411,12 +474,19 @@ function RaPane({
     }
     if (!current) return;
     const moved = Math.hypot(event.clientX - current.grabX, event.clientY - current.grabY) > 8;
-    if (current.overArchive) {
+    if (moved && current.overArchive) {
       onArchive(current.cardId);
+      setOpenId((id) => (id === current.cardId ? null : id));
+      setSelectedId((id) => (id === current.cardId ? null : id));
       return;
     }
     if (moved && current.overListId) {
       onMove(current.cardId, current.overListId);
+      return;
+    }
+    if (!moved) {
+      setSelectedId(current.cardId);
+      setOpenId(current.cardId);
     }
   }
 
@@ -440,9 +510,17 @@ function RaPane({
       : null;
 
   return (
-    <div className="miniapp-body ra-game" data-miniapp="boards" data-ra-game>
+    <div
+      className="miniapp-body ra-game"
+      data-miniapp="boards"
+      data-ra-game
+      data-house-shortcut="e,1-6"
+      data-archive-y={TOP_ARCHIVE_Y}
+    >
       <p className="miniapp-kicker">Ra</p>
-      <p className="ra-game-hint">tirá las tarjetas. arriba se archivan.</p>
+      <p className="ra-game-hint">
+        {phone ? "tirá las tarjetas. arriba se archivan." : "tirá las tarjetas. arriba se archivan. E archiva · 1–6 color."}
+      </p>
       <div className="board-mini">
         {board.lists.map((list) => (
           <div
@@ -457,36 +535,38 @@ function RaPane({
             <span className="board-col-title">{list.name}</span>
             {board.cards
               .filter((card) => card.idList === list.id && !card.closed && card.id !== drag?.cardId)
-              .map((card) => (
-                <div
-                  key={card.id}
-                  className={`board-feel board-feel-${card.feel || "gold"}`}
-                  data-ra-card={card.id}
-                  onPointerDown={(event) => onCardDown(event, { id: card.id, name: card.name, feel: card.feel })}
-                  onPointerMove={onCardMove}
-                  onPointerUp={onCardUp}
-                  onPointerCancel={onCardUp}
-                >
-                  {card.name}
-                  <div className="feel-dots" role="group" aria-label="color">
-                    {FEEL_COLOR_IDS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        className={`feel-dot board-feel-${color}${card.feel === color ? " is-on" : ""}`}
-                        aria-label={color}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={() => onColor(card.id, color)}
-                      />
-                    ))}
+              .map((card) => {
+                const who = assigneeLine(card.members[0]);
+                const when = formatHouseDue(card.due);
+                return (
+                  <div
+                    key={card.id}
+                    className={`board-feel board-feel-${card.feel || "gold"}${selectedId === card.id ? " is-on" : ""}`}
+                    data-ra-card={card.id}
+                    data-house-card={card.id}
+                    data-selected={selectedId === card.id ? "true" : "false"}
+                    onPointerDown={(event) => onCardDown(event, { id: card.id, name: card.name, feel: card.feel })}
+                    onPointerMove={onCardMove}
+                    onPointerUp={onCardUp}
+                    onPointerCancel={onCardUp}
+                  >
+                    <span className="board-card-title">{card.name}</span>
+                    {who || when ? (
+                      <span className="board-card-meta">
+                        {who}
+                        {who && when ? " · " : ""}
+                        {when}
+                      </span>
+                    ) : null}
+                    <ColorDots current={card.feel} onPick={(color) => onColor(card.id, color)} />
+                    <div className="board-card-ops">
+                      <button type="button" className="board-mini-btn" onClick={() => onDone(card.id)}>
+                        listo
+                      </button>
+                    </div>
                   </div>
-                  <div className="board-card-ops">
-                    <button type="button" className="board-mini-btn" onClick={() => onDone(card.id)}>
-                      listo
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             <form
               className="miniapp-add"
               onSubmit={(event) => {
@@ -510,6 +590,96 @@ function RaPane({
           </div>
         ))}
       </div>
+      {openCard ? (
+        <div className="ra-card-sheet" data-ra-detail data-house-detail>
+          <header className="ra-card-sheet-head">
+            <strong>{openCard.name}</strong>
+            <button type="button" className="board-mini-btn" onClick={() => setOpenId(null)}>
+              cerrar
+            </button>
+          </header>
+          <ColorDots current={openCard.feel} onPick={(color) => onColor(openCard.id, color)} />
+          <label className="ra-field">
+            qué es
+            <textarea
+              value={descDraft}
+              onChange={(event) => setDescDraft(event.target.value)}
+              onBlur={() => {
+                if (descDraft !== (openCard.desc || "")) onHouse({ action: "desc", cardId: openCard.id, desc: descDraft });
+              }}
+              rows={4}
+              aria-label="descripción"
+            />
+          </label>
+          <label className="ra-field">
+            fecha
+            <input
+              type="date"
+              value={formatHouseDue(openCard.due)}
+              aria-label="fecha"
+              onChange={(event) => {
+                const value = event.target.value;
+                onHouse({ action: "due", cardId: openCard.id, due: value ? `${value}T12:00:00.000Z` : null });
+              }}
+            />
+          </label>
+          <label className="ra-field">
+            quién
+            <select
+              value={openCard.idMembers[0] || ""}
+              aria-label="responsable"
+              onChange={(event) =>
+                onHouse({ action: "assign", cardId: openCard.id, memberId: event.target.value || null })
+              }
+            >
+              <option value="">nadie</option>
+              {board.members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {assigneeLine(member) || member.fullName || member.username}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ul className="ra-links" data-house-links>
+            {openCard.links.length === 0 ? <li>sin links</li> : null}
+            {openCard.links.map((link) => (
+              <li key={link.id}>
+                <a href={link.url} target="_blank" rel="noreferrer">
+                  {link.name}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <form
+            className="miniapp-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const url = extractHttpUrl(linkDraft) || linkDraft.trim();
+              if (!url) return;
+              onHouse({ action: "link", cardId: openCard.id, url });
+              setLinkDraft("");
+            }}
+          >
+            <input
+              value={linkDraft}
+              onChange={(event) => setLinkDraft(event.target.value)}
+              placeholder="pegá un link"
+              aria-label="link"
+            />
+            <button type="submit" disabled={!linkDraft.trim()}>
+              ok
+            </button>
+          </form>
+          <div className="board-card-ops">
+            <button type="button" className="board-mini-btn" data-house-archive onClick={() => onArchive(openCard.id)}>
+              archivar
+            </button>
+            <button type="button" className="board-mini-btn" onClick={() => onDone(openCard.id)}>
+              listo
+            </button>
+          </div>
+        </div>
+      ) : null}
       {portal}
     </div>
   );
@@ -524,6 +694,7 @@ export function CompanionApps({
   onRaDone,
   onRaColor,
   onRaArchive,
+  onRaHouse,
   onFoco,
 }: {
   board?: RaBoard;
@@ -534,6 +705,7 @@ export function CompanionApps({
   onRaDone: (cardId: string) => void;
   onRaColor: (cardId: string, color: FeelColor) => void;
   onRaArchive: (cardId: string) => void;
+  onRaHouse: (patch: HouseCardPatch) => void;
   onFoco: (foco: boolean) => void;
 }) {
   const phone = usePhone();
@@ -590,11 +762,13 @@ export function CompanionApps({
         board={board}
         seat={seat}
         authorizeUrl={authorizeUrl}
+        phone={phone}
         onAdd={onRaAdd}
         onMove={onRaMove}
         onDone={onRaDone}
         onColor={onRaColor}
         onArchive={onRaArchive}
+        onHouse={onRaHouse}
       />
     );
   }

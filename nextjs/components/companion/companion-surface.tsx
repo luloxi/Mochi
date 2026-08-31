@@ -24,7 +24,11 @@ import { CHAT_WINDOWS, localHelpReply, parseNimboIntent, roleForPetClick } from 
 import {
   RA_MISSING_LINE,
   archiveCardOnBoard,
+  assignCardOnBoard,
   colorCardOnBoard,
+  describeCardOnBoard,
+  dueCardOnBoard,
+  linkCardOnBoard,
   moveCardOnBoard,
   readTrelloTokenFromCallback,
   type RaBoard,
@@ -46,7 +50,7 @@ import { moveWindow, resizeWindow, type LiveWindow } from "@/lib/companion/windo
 type TalkMsg = { id: string; from: "me" | "them"; content: string };
 type OpenChat = "human" | "nimbo" | "help" | null;
 
-const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], configured: false };
+const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], members: [], configured: false };
 const TALK_SEED: LiveWindow = { id: "talk", x: 72, y: 56, w: 280, h: 360, z: 55 };
 
 function PresenceFace({
@@ -611,6 +615,41 @@ export function CompanionSurface() {
               credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "archive", cardId }),
+            })
+              .then((res) => res.json())
+              .then((json) => {
+                if (json?.board) {
+                  const next = { ...EMPTY_BOARD, ...json.board };
+                  setBoard(next);
+                  saveRaSnapshot(next.cards || []);
+                }
+              })
+              .catch(() => void pullBoard());
+          }}
+          onRaHouse={(patch) => {
+            setBoard((prev) => {
+              if (patch.action === "desc") return describeCardOnBoard(prev, patch.cardId, patch.desc);
+              if (patch.action === "due") return dueCardOnBoard(prev, patch.cardId, patch.due);
+              if (patch.action === "assign") return assignCardOnBoard(prev, patch.cardId, patch.memberId);
+              return linkCardOnBoard(prev, patch.cardId, {
+                id: patch.url,
+                name: patch.url,
+                url: patch.url,
+              });
+            });
+            const body =
+              patch.action === "desc"
+                ? { action: "desc", cardId: patch.cardId, desc: patch.desc }
+                : patch.action === "due"
+                  ? { action: "due", cardId: patch.cardId, due: patch.due }
+                  : patch.action === "assign"
+                    ? { action: "assign", cardId: patch.cardId, memberId: patch.memberId }
+                    : { action: "link", cardId: patch.cardId, url: patch.url };
+            void fetch("/api/companion/trello", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
             })
               .then((res) => res.json())
               .then((json) => {
