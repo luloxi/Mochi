@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CompanionPair } from "@/components/companion/companion-pet";
 import { CompanionLogin } from "@/components/companion/companion-login";
 import { CompanionApps } from "@/components/companion/companion-apps";
+import { DeskWindow, usePhone } from "@/components/companion/companion-window";
 import {
   COMPANION_DUE_EVENT,
-  COMPANION_OPEN_RA,
   addTodoItem,
   applyNimboClock,
   dueLine,
@@ -36,15 +36,72 @@ import {
   leaveSignalText,
   nextTogetherTick,
   presenceDot,
+  presenceHoverText,
   type PresenceStatus,
   type PresenceView,
 } from "@/lib/companion/presence";
 import { bubbleAboveHead } from "@/lib/companion/desk";
+import { moveWindow, resizeWindow, type LiveWindow } from "@/lib/companion/windows";
 
 type TalkMsg = { id: string; from: "me" | "them"; content: string };
 type OpenChat = "human" | "nimbo" | "help" | null;
 
 const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], configured: false };
+const TALK_SEED: LiveWindow = { id: "talk", x: 72, y: 56, w: 280, h: 360, z: 55 };
+
+function PresenceFace({
+  face,
+  character,
+  owner,
+  pronoun,
+  status,
+}: {
+  face: "katho" | "lulox";
+  character: string;
+  owner: string;
+  pronoun: "ella" | "él";
+  status: PresenceStatus;
+}) {
+  const [tip, setTip] = useState(false);
+  const hold = useRef<number | null>(null);
+  const text = presenceHoverText({ character, owner, pronoun, status });
+  function clearHold() {
+    if (hold.current != null) {
+      window.clearTimeout(hold.current);
+      hold.current = null;
+    }
+  }
+  return (
+    <span
+      className="desk-face"
+      data-face={face}
+      data-presence={status}
+      data-dot={presenceDot(status)}
+      data-tip={text}
+      aria-label={text}
+      onPointerEnter={() => setTip(true)}
+      onPointerLeave={() => {
+        clearHold();
+        setTip(false);
+      }}
+      onPointerDown={() => {
+        clearHold();
+        hold.current = window.setTimeout(() => setTip(true), 450);
+      }}
+      onPointerUp={clearHold}
+      onPointerCancel={() => {
+        clearHold();
+        setTip(false);
+      }}
+    >
+      {tip ? (
+        <span className="desk-tip" data-presence-tip role="tooltip">
+          {text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 export function CompanionSurface() {
   const [auth, setAuth] = useState<CompanionAuthSession | null | undefined>(undefined);
@@ -72,6 +129,8 @@ export function CompanionSurface() {
   const [mascotAlert, setMascotAlert] = useState<string | null>(null);
   const [pomoOn, setPomoOn] = useState(false);
   const [phoneFoco, setPhoneFoco] = useState(false);
+  const [talkPos, setTalkPos] = useState<LiveWindow>(TALK_SEED);
+  const phone = usePhone();
   const seenDmRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -396,14 +455,20 @@ export function CompanionSurface() {
   function clickMochi() {
     if (!seat) return;
     setOpenChat(roleForPetClick(seat, "mochi"));
+    setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }));
   }
   function clickLulox() {
     if (!seat) return;
     setOpenChat(roleForPetClick(seat, "lulox"));
+    setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }));
   }
   function clickNimbo() {
     if (!seat) return;
     setOpenChat("nimbo");
+    setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }));
+  }
+  function closeTalk() {
+    setOpenChat(null);
   }
 
   const ownTint = seat === "katho" ? CHAT_WINDOWS.mochi : CHAT_WINDOWS.lulox;
@@ -424,24 +489,20 @@ export function CompanionSurface() {
     >
       {auth ? (
         <div className="desk-faces" data-desk-faces>
-          <span
-            className="desk-face"
-            data-face="katho"
-            data-presence={pairPresence.katho}
-            data-dot={presenceDot(pairPresence.katho)}
-            title="Katho"
-          >
-            K
-          </span>
-          <span
-            className="desk-face"
-            data-face="lulox"
-            data-presence={pairPresence.lulox}
-            data-dot={presenceDot(pairPresence.lulox)}
-            title="Lulox"
-          >
-            L
-          </span>
+          <PresenceFace
+            face="katho"
+            character="Mochi"
+            owner="Katho"
+            pronoun="ella"
+            status={pairPresence.katho}
+          />
+          <PresenceFace
+            face="lulox"
+            character="Lulox"
+            owner="Lulox"
+            pronoun="él"
+            status={pairPresence.lulox}
+          />
         </div>
       ) : null}
 
@@ -468,17 +529,6 @@ export function CompanionSurface() {
         <p className="leave-signal" data-leave-signal>
           {leave}
         </p>
-      ) : null}
-
-      {auth && !board.configured ? (
-        <button
-          type="button"
-          className="ra-status"
-          data-ra-status
-          onClick={() => window.dispatchEvent(new Event(COMPANION_OPEN_RA))}
-        >
-          {RA_MISSING_LINE}
-        </button>
       ) : null}
 
       {auth ? (
@@ -579,21 +629,19 @@ export function CompanionSurface() {
       {auth === null ? <CompanionLogin onSession={setAuth} /> : null}
 
       {openChat === "human" && other && seat ? (
-        <section
-          className={`talk-window tint-${otherTint.colorName}`}
-          data-talk-window="human"
-          data-talk-never-hide="true"
-          data-tint={otherTint.colorName}
-          role="dialog"
-          aria-label={otherTint.label}
-          style={{ borderColor: otherTint.hex }}
+        <DeskWindow
+          id="human"
+          title={otherTint.label}
+          phone={phone}
+          pos={{ ...talkPos, id: "human" }}
+          variant="talk"
+          className={`tint-${otherTint.colorName}`}
+          tint={otherTint.colorName}
+          onClose={closeTalk}
+          onFocus={() => setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }))}
+          onMove={(x, y) => setTalkPos((prev) => moveWindow([prev], prev.id, x, y)[0] || { ...prev, x, y })}
+          onResize={(next) => setTalkPos((prev) => resizeWindow([prev], prev.id, next)[0] || { ...prev, ...next })}
         >
-          <header className="talk-chrome" style={{ background: otherTint.chrome }}>
-            <span>{otherTint.label}</span>
-            <button type="button" className="talk-close" onClick={() => setOpenChat(null)} aria-label="Cerrar">
-              ×
-            </button>
-          </header>
           <div className="talk-body">
             <div className="talk-log">
               {pairLog.length === 0 ? (
@@ -625,25 +673,25 @@ export function CompanionSurface() {
               </button>
             </form>
           </div>
-        </section>
+        </DeskWindow>
       ) : null}
 
       {openChat === "nimbo" ? (
-        <section
-          className="talk-window tint-gold"
-          data-talk-window="nimbo"
-          data-talk-never-hide="true"
-          data-tint="gold"
-          role="dialog"
-          aria-label={nimboTint.label}
-          style={{ borderColor: nimboTint.hex }}
+        <DeskWindow
+          id="nimbo"
+          title={nimboTint.label}
+          phone={phone}
+          pos={{ ...talkPos, id: "nimbo" }}
+          variant="talk"
+          className="tint-gold"
+          tint="gold"
+          onClose={closeTalk}
+          onFocus={() => setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }))}
+          onMove={(x, y) => setTalkPos((prev) => moveWindow([{ ...prev, id: "talk" }], "talk", x, y)[0] || { ...prev, x, y })}
+          onResize={(next) =>
+            setTalkPos((prev) => resizeWindow([{ ...prev, id: "talk" }], "talk", next)[0] || { ...prev, ...next })
+          }
         >
-          <header className="talk-chrome" style={{ background: nimboTint.chrome }}>
-            <span>{nimboTint.label}</span>
-            <button type="button" className="talk-close" onClick={() => setOpenChat(null)} aria-label="Cerrar">
-              ×
-            </button>
-          </header>
           <div className="talk-body">
             <div className="talk-log">
               {nimboLog.length === 0 ? (
@@ -675,25 +723,23 @@ export function CompanionSurface() {
               </button>
             </form>
           </div>
-        </section>
+        </DeskWindow>
       ) : null}
 
       {openChat === "help" && seat ? (
-        <section
-          className={`talk-window tint-${ownTint.colorName}`}
-          data-talk-window="help"
-          data-talk-never-hide="true"
-          data-tint={ownTint.colorName}
-          role="dialog"
-          aria-label="Ayuda"
-          style={{ borderColor: ownTint.hex }}
+        <DeskWindow
+          id="help"
+          title="ayuda"
+          phone={phone}
+          pos={{ ...talkPos, id: "help" }}
+          variant="talk"
+          className={`tint-${ownTint.colorName}`}
+          tint={ownTint.colorName}
+          onClose={closeTalk}
+          onFocus={() => setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }))}
+          onMove={(x, y) => setTalkPos((prev) => ({ ...prev, x: Math.max(8, x), y: Math.max(8, y) }))}
+          onResize={(next) => setTalkPos((prev) => ({ ...prev, ...next }))}
         >
-          <header className="talk-chrome" style={{ background: ownTint.chrome }}>
-            <span>ayuda</span>
-            <button type="button" className="talk-close" onClick={() => setOpenChat(null)} aria-label="Cerrar">
-              ×
-            </button>
-          </header>
           <div className="talk-body">
             <div className="talk-log">
               {helpLog.length === 0 ? (
@@ -725,7 +771,7 @@ export function CompanionSurface() {
               </button>
             </form>
           </div>
-        </section>
+        </DeskWindow>
       ) : null}
     </div>
   );

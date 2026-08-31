@@ -327,19 +327,29 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 
 .talk-window.tint-pink {
   background: #ffe4f3;
-  left: 8%;
-  transform: none;
 }
 
 .talk-window.tint-cyan {
   background: #d9f6ff;
-  left: auto;
-  right: 8%;
-  transform: none;
 }
 
 .talk-window.tint-gold {
   background: #f6e7b2;
+}
+
+.talk-window.tint-pink .talk-chrome,
+.talk-window.tint-pink .miniapp-chrome {
+  background: #c2186a;
+}
+
+.talk-window.tint-cyan .talk-chrome,
+.talk-window.tint-cyan .miniapp-chrome {
+  background: #0a6e94;
+}
+
+.talk-window.tint-gold .talk-chrome,
+.talk-window.tint-gold .miniapp-chrome {
+  background: #6b4f0a;
 }
 
 .talk-chrome {
@@ -369,6 +379,7 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   padding: 8px 10px 10px;
   min-height: 0;
   overflow: hidden;
+  flex: 1;
 }
 
 .talk-log {
@@ -669,19 +680,39 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   z-index: 42;
   display: flex;
   gap: 8px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .desk-face {
-  width: 28px;
-  height: 28px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 2px solid var(--c-ink);
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 800;
+  display: block;
+  position: relative;
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  cursor: default;
+}
+
+.desk-tip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 60;
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 2px solid var(--c-ink);
+  background: #fff;
   color: var(--c-ink);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
 }
 
 .desk-face[data-dot="green"] {
@@ -697,21 +728,35 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   color: #fff6ee;
 }
 
-.ra-dock {
+.app-dock {
   position: fixed;
-  top: 52px;
-  left: 14px;
-  z-index: 75;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  max-width: min(92vw, 420px);
+  max-width: min(92vw, 520px);
+}
+
+.app-dock-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 2px solid var(--c-ink);
+  background: #fff6ee;
 }
 
 .ra-launcher,
 .ra-switch,
-.ra-nav-btn {
+.ra-nav-btn,
+.dock-btn {
   border-radius: 999px;
   border: 2px solid var(--c-ink);
   background: var(--c-gold);
@@ -723,17 +768,20 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   cursor: pointer;
 }
 
-.ra-nav {
+.ra-nav,
+.app-dock-nav {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.ra-nav-btn {
+.ra-nav-btn,
+.dock-btn {
   background: #fff;
 }
 
 .ra-nav-btn.is-on,
+.dock-btn.is-on,
 .miniapp-row button.is-on {
   background: var(--c-gold);
 }
@@ -778,6 +826,78 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   letter-spacing: 0.04em;
   cursor: grab;
   touch-action: none;
+  flex: 0 0 auto;
+}
+
+.win-resize {
+  position: absolute;
+  z-index: 3;
+  background: transparent;
+  touch-action: none;
+}
+
+.win-resize[data-dir="n"] {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.win-resize[data-dir="s"] {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.win-resize[data-dir="e"] {
+  top: 10px;
+  right: 0;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.win-resize[data-dir="w"] {
+  top: 10px;
+  left: 0;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.win-resize[data-dir="ne"] {
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nesw-resize;
+}
+
+.win-resize[data-dir="nw"] {
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+}
+
+.win-resize[data-dir="se"] {
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+}
+
+.win-resize[data-dir="sw"] {
+  bottom: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nesw-resize;
 }
 
 .miniapp-full .miniapp-chrome {

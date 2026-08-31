@@ -33,6 +33,7 @@ import {
   HELP_SOUL,
   appAgentCanDrive,
   chatWindowList,
+  launchTargetFor,
   localHelpReply,
   nimboCanDrive,
   parseAppAgentIntent,
@@ -46,7 +47,6 @@ import {
   bubbleAboveHead,
   firstPaintViolations,
 } from "./desk";
-import { leaveSignalText, presenceDot } from "./presence";
 import {
   companionSyncApi,
   createMemorySyncStore,
@@ -55,7 +55,11 @@ import {
 import {
   TOGETHER_ACTIONS,
   deskZones,
+  leaveSignalText,
   nextTogetherTick,
+  presenceDot,
+  presenceHoverText,
+  presenceStateLabel,
   statusFromHeartbeat,
   zonesAreApart,
 } from "./presence";
@@ -72,8 +76,19 @@ import {
   wizardCopyText,
   type RaBoard,
 } from "./trello";
-import { NIMBO_SPRITE_BASE, spriteUrl } from "./shimeji-engine";
+import {
+  NIMBO_SPRITE_BASE,
+  PHYSICS,
+  State,
+  createMascot,
+  endDrag,
+  promoteDrag,
+  spriteUrl,
+  throwKind,
+  tickShimeji,
+} from "./shimeji-engine";
 import { handleCompanionTrelloRequest } from "./trello-api";
+import { closeWindow, openWindow, resizeWindow, windowIsOpen } from "./windows";
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres)\b/i;
 
@@ -579,6 +594,7 @@ describe("first paint desk + bubbles + in-app llm", () => {
   const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
   const pet = readFileSync(join(here, "../../components/companion/companion-pet.tsx"), "utf8");
   const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+  const deskWin = readFileSync(join(here, "../../components/companion/companion-window.tsx"), "utf8");
   const grokRoute = readFileSync(join(here, "../../app/api/companion/grok/route.ts"), "utf8");
   const agentRoute = readFileSync(join(here, "../../app/api/companion/agent/route.ts"), "utf8");
 
@@ -624,11 +640,15 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.doesNotMatch(surface, /trello-api/);
     assert.match(surface, /data-desk-faces/);
     assert.match(surface, /data-ra-launcher|CompanionApps/);
-    assert.match(surface, /data-talk-never-hide/);
-    assert.match(apps, /data-ra-launcher/);
-    assert.match(apps, /miniapp-full/);
-    assert.match(apps, /miniapp-window/);
+    assert.match(`${surface}\n${deskWin}`, /data-talk-never-hide/);
+    assert.match(apps, /data-app-dock/);
+    assert.match(`${apps}\n${deskWin}`, /miniapp-full/);
+    assert.match(`${apps}\n${deskWin}`, /miniapp-window/);
     assert.match(css, /\.miniapp-full[\s\S]*100dvh/);
+    assert.match(css, /\.app-dock[\s\S]*bottom:/);
+    assert.match(css, /\.app-dock[\s\S]*left:\s*50%/);
+    assert.match(apps, /data-win-resize|DeskWindow/);
+    assert.match(surface, /data-win-close|closeTalk/);
   });
 
   it("bubbles sit above mascot heads, not a giant form", () => {
@@ -648,7 +668,7 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.match(css, /writing-mode:\s*horizontal-tb/);
     assert.match(css, /bottom:\s*calc\(100%/);
     assert.match(css, /\.companion-mascot[\s\S]*overflow:\s*visible/);
-    assert.match(surface, /talk-window/);
+    assert.match(`${surface}\n${deskWin}`, /talk-window/);
     assert.doesNotMatch(surface, /companion-composer/);
     const incoming = {
       id: "dm-1",
@@ -715,11 +735,145 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.equal(presenceDot("idle-away"), "yellow");
     assert.equal(presenceDot("logout"), "red");
     assert.equal(presenceDot("close"), "red");
+    assert.match(surface, /data-presence-tip|presenceHoverText/);
     assert.match(pet, /bias=\{null\}/);
     assert.match(pet, /bias=\{zones \?/);
     const hereSprites = join(dirname(fileURLToPath(import.meta.url)), "../../public/sprites");
     assert.equal(existsSync(join(hereSprites, "nimbo/stand-neutral.png")), true);
     assert.equal(existsSync(join(hereSprites, "mochi/stand-neutral.png")), true);
     assert.equal(existsSync(join(hereSprites, "lulox/stand-neutral.png")), true);
+  });
+});
+
+describe("dock launches apps, Nimbo click is chat", () => {
+  it("clicking Nimbo/Ra is chat, not an app launch", () => {
+    assert.equal(roleForPetClick("katho", "nimbo"), "nimbo");
+    assert.equal(roleForPetClick("lulox", "nimbo"), "nimbo");
+    assert.deepEqual(launchTargetFor("nimbo"), { kind: "chat", chat: "nimbo" });
+    assert.deepEqual(launchTargetFor("ra-pet"), { kind: "chat", chat: "nimbo" });
+    assert.deepEqual(launchTargetFor("dock", "pomo"), { kind: "app", app: "pomo" });
+    const here = dirname(fileURLToPath(import.meta.url));
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    const clickNimbo = surface.slice(surface.indexOf("function clickNimbo"), surface.indexOf("function closeTalk"));
+    assert.match(clickNimbo, /setOpenChat\("nimbo"\)/);
+    assert.doesNotMatch(clickNimbo, /COMPANION_OPEN_RA|pick\(|setOrder|data-dock-app/);
+    assert.match(apps, /data-app-dock/);
+    assert.match(apps, /data-dock-app/);
+    assert.doesNotMatch(apps, /className="ra-launcher"/);
+    assert.doesNotMatch(surface, /data-ra-status/);
+    assert.match(css, /\.app-dock[\s\S]*bottom:/);
+    assert.match(css, /\.app-dock[\s\S]*left:\s*50%/);
+  });
+});
+
+describe("windows close for real + resize", () => {
+  it("close removes the window instead of hiding it behind", () => {
+    let wins = openWindow([], "pomo");
+    wins = openWindow(wins, "notas");
+    assert.equal(windowIsOpen(wins, "pomo"), true);
+    assert.equal(windowIsOpen(wins, "notas"), true);
+    wins = closeWindow(wins, "pomo");
+    assert.equal(windowIsOpen(wins, "pomo"), false);
+    assert.equal(wins.some((win) => win.id === "pomo"), false);
+    assert.equal(windowIsOpen(wins, "notas"), true);
+    const sized = resizeWindow(wins, "notas", { w: 120, h: 80 });
+    assert.ok(sized[0].w >= 200);
+    assert.ok(sized[0].h >= 140);
+    const here = dirname(fileURLToPath(import.meta.url));
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const win = readFileSync(join(here, "../../components/companion/companion-window.tsx"), "utf8");
+    assert.match(apps, /closeWindow\(prev, id\)/);
+    assert.match(win, /data-win-close/);
+    assert.match(win, /data-win-resize/);
+    assert.match(win, /stopPropagation/);
+    assert.match(win, /onClose\(\)/);
+  });
+});
+
+describe("presence hover copy", () => {
+  it("dots only; hover names the character, who it belongs to, and the state", () => {
+    assert.equal(presenceStateLabel("present"), "presente");
+    assert.equal(presenceStateLabel("idle-away"), "idle");
+    assert.equal(presenceStateLabel("logout"), "desconectado");
+    assert.equal(presenceStateLabel("close"), "desconectado");
+    assert.equal(
+      presenceHoverText({ character: "Mochi", owner: "Katho", pronoun: "ella", status: "present" }),
+      "Mochi, de Katho (ella). presente.",
+    );
+    assert.equal(
+      presenceHoverText({ character: "Lulox", owner: "Lulox", pronoun: "él", status: "idle-away" }),
+      "Lulox, de Lulox (él). idle.",
+    );
+    assert.equal(
+      presenceHoverText({ character: "Mochi", owner: "Katho", pronoun: "ella", status: "close" }),
+      "Mochi, de Katho (ella). desconectado.",
+    );
+    assert.equal(INCLUSIVE.test(presenceHoverText({ character: "Mochi", owner: "Katho", pronoun: "ella", status: "present" })), false);
+    const here = dirname(fileURLToPath(import.meta.url));
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    assert.match(surface, /presenceHoverText/);
+    assert.match(surface, /data-presence-tip/);
+    assert.match(surface, /owner="Katho"/);
+    assert.match(surface, /owner="Lulox"/);
+    assert.match(surface, /pronoun="ella"/);
+    assert.match(surface, /pronoun="él"/);
+    assert.doesNotMatch(surface, />K</);
+    assert.doesNotMatch(surface, />L</);
+    assert.match(css, /\.desk-face[\s\S]*font-size:\s*0/);
+  });
+});
+
+describe("throw slow vs fast", () => {
+  it("slow throw grabs a wall or ceiling and keeps walking; fast throw falls and bounces", () => {
+    assert.equal(throwKind(2), "slow");
+    assert.equal(throwKind(PHYSICS.throwFastSpeed), "fast");
+    const bounds = { width: 400, height: 300 };
+    const scale = 1;
+
+    const slow = createMascot(bounds, scale);
+    slow.x = 10;
+    slow.y = 150;
+    promoteDrag(slow);
+    slow.smoothedVelocityX = 2;
+    slow.smoothedVelocityY = 1;
+    assert.equal(endDrag(slow, bounds, scale), "grab");
+    assert.equal(slow.state, State.WALKING);
+    assert.ok(slow.edge === "left" || slow.edge === "right" || slow.edge === "ceiling");
+    assert.notEqual(slow.state, State.FALLING);
+
+    const fast = createMascot(bounds, scale);
+    fast.x = 80;
+    fast.y = 170;
+    promoteDrag(fast);
+    fast.smoothedVelocityX = -22;
+    fast.smoothedVelocityY = -6;
+    assert.equal(endDrag(fast, bounds, scale), "throw");
+    assert.equal(fast.state, State.FALLING);
+    assert.equal(fast.throwMode, "bounce");
+    const vy0 = fast.velocityY;
+    const y0 = fast.y;
+    tickShimeji(fast, bounds, scale, null, null);
+    assert.ok(fast.velocityY > vy0, "gravity pulls down");
+    for (let i = 0; i < 10; i++) tickShimeji(fast, bounds, scale, null, null);
+    assert.ok(fast.velocityY > 0 || fast.y > y0, "they fall");
+    fast.x = 0;
+    fast.velocityX = -16;
+    tickShimeji(fast, bounds, scale, null, null);
+    assert.ok(fast.velocityX > 0, "fast throw bounces off the wall");
+    assert.equal(fast.state, State.FALLING);
+
+    const hold = createMascot(bounds, scale);
+    hold.state = State.FALLING;
+    hold.throwMode = "bounce";
+    hold.y = 160;
+    promoteDrag(hold);
+    assert.equal(hold.isDragging, true);
+    assert.equal(hold.state, State.DRAGGED);
+    tickShimeji(hold, bounds, scale, null, null);
+    assert.equal(hold.isDragging, true);
+    assert.equal(hold.state, State.DRAGGED);
   });
 });

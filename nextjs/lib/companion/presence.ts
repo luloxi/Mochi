@@ -128,6 +128,22 @@ export function presenceDot(status: PresenceStatus): PresenceDot {
   return "red";
 }
 
+export function presenceStateLabel(status: PresenceStatus): "presente" | "idle" | "desconectado" {
+  if (status === "present") return "presente";
+  if (status === "idle-away") return "idle";
+  return "desconectado";
+}
+
+/** Hover / long-press: character name, who it belongs to, current state. */
+export function presenceHoverText(args: {
+  character: string;
+  owner: string;
+  pronoun: "ella" | "él";
+  status: PresenceStatus;
+}): string {
+  return `${args.character}, de ${args.owner} (${args.pronoun}). ${presenceStateLabel(args.status)}.`;
+}
+
 /** Together-gather only. Default wander is the full perimeter — do not pin to floor strips. */
 export function deskZones(
   mode: "together" | "separate",

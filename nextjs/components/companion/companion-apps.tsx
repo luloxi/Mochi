@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   COMPANION_OPEN_RA,
@@ -22,8 +22,23 @@ import { FEEL_COLOR_IDS, type FeelColor } from "@/lib/companion/boards";
 import { RADIO_STATIONS, radioStationById, type RadioStationId } from "@/lib/companion/radio";
 import { extractYouTubeId, youtubeEmbedUrl } from "@/lib/companion/youtube";
 import { emptyRaBoard, raConnectWizard, type RaBoard } from "@/lib/companion/trello";
+import {
+  closeWindow,
+  focusWindow,
+  moveWindow,
+  openWindow,
+  resizeWindow,
+  type LiveWindow,
+} from "@/lib/companion/windows";
+import { DeskWindow, usePhone } from "@/components/companion/companion-window";
 
-type WinPos = { id: RaAppId; x: number; y: number; z: number };
+const APP_SEED: Record<RaAppId, { w: number; h: number }> = {
+  pomo: { w: 260, h: 220 },
+  notas: { w: 280, h: 320 },
+  video: { w: 360, h: 320 },
+  radio: { w: 300, h: 240 },
+  boards: { w: 640, h: 480 },
+};
 
 function formatRemain(sec: number) {
   const s = Math.max(0, Math.floor(sec));
@@ -31,60 +46,44 @@ function formatRemain(sec: number) {
   return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function usePhone() {
-  const [phone, setPhone] = useState(false);
-  useEffect(() => {
-    const read = () => setPhone(window.innerWidth <= 699);
-    read();
-    window.addEventListener("resize", read);
-    return () => window.removeEventListener("resize", read);
-  }, []);
-  return phone;
-}
-
-function RaNav({
-  open,
+function AppDock({
+  choosing,
   active,
-  onToggle,
+  phone,
+  hasOpen,
   onPick,
-  switchOnly,
+  onSwitch,
 }: {
-  open: boolean;
+  choosing: boolean;
   active: RaAppId | null;
-  onToggle: () => void;
+  phone: boolean;
+  hasOpen: boolean;
   onPick: (id: RaAppId) => void;
-  switchOnly?: boolean;
+  onSwitch: () => void;
 }) {
+  const switchOnly = phone && hasOpen && !choosing;
   return (
-    <div className="ra-dock" data-ra-dock>
-      <button type="button" className="ra-launcher" data-ra-launcher onClick={onToggle} aria-expanded={open}>
-        Ra
-      </button>
-      {open ? (
-        <nav className="ra-nav" data-ra-nav aria-label="Ra">
+    <div className="app-dock" data-app-dock data-ra-dock>
+      {switchOnly ? (
+        <button type="button" className="ra-switch" data-ra-switch onClick={onSwitch}>
+          cambiar
+        </button>
+      ) : (
+        <nav className="app-dock-nav" data-ra-nav aria-label="Apps">
           {RA_APPS.map((app) => (
             <button
               key={app.id}
               type="button"
-              className={`ra-nav-btn${active === app.id ? " is-on" : ""}`}
+              className={`dock-btn${active === app.id ? " is-on" : ""}`}
               data-ra-app={app.id}
+              data-dock-app={app.id}
               onClick={() => onPick(app.id)}
             >
               {app.label}
             </button>
           ))}
         </nav>
-      ) : null}
-      {switchOnly && !open && active ? (
-        <button
-          type="button"
-          className="ra-switch"
-          data-ra-switch
-          onClick={onToggle}
-        >
-          cambiar
-        </button>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -516,70 +515,6 @@ function RaPane({
   );
 }
 
-function MiniappChrome({
-  id,
-  phone,
-  pos,
-  onClose,
-  onFocus,
-  onMove,
-  children,
-}: {
-  id: RaAppId;
-  phone: boolean;
-  pos: WinPos;
-  onClose: () => void;
-  onFocus: () => void;
-  onMove: (x: number, y: number) => void;
-  children: ReactNode;
-}) {
-  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const label = RA_APPS.find((app) => app.id === id)?.label || id;
-
-  function down(event: PointerEvent<HTMLElement>) {
-    if (phone) return;
-    onFocus();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, y: event.clientY, left: pos.x, top: pos.y };
-  }
-  function move(event: PointerEvent<HTMLElement>) {
-    if (!drag.current) return;
-    onMove(drag.current.left + event.clientX - drag.current.x, drag.current.top + event.clientY - drag.current.y);
-  }
-  function up(event: PointerEvent<HTMLElement>) {
-    drag.current = null;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // ignore
-    }
-  }
-
-  return (
-    <section
-      className={phone ? "miniapp-full" : "miniapp-window"}
-      data-miniapp-window={id}
-      data-phone-full={phone ? "true" : "false"}
-      style={phone ? undefined : { left: pos.x, top: pos.y, zIndex: pos.z }}
-      onPointerDown={onFocus}
-    >
-      <header
-        className="miniapp-chrome"
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={up}
-      >
-        <span>{label}</span>
-        <button type="button" className="talk-close" onClick={onClose} aria-label="Cerrar">
-          ×
-        </button>
-      </header>
-      {children}
-    </section>
-  );
-}
-
 export function CompanionApps({
   board = emptyRaBoard(),
   seat = "katho",
@@ -604,21 +539,16 @@ export function CompanionApps({
   const phone = usePhone();
   const [navOpen, setNavOpen] = useState(false);
   const [order, setOrder] = useState<RaAppId[]>([]);
-  const [wins, setWins] = useState<WinPos[]>([]);
-  const zRef = useRef(30);
+  const [wins, setWins] = useState<LiveWindow[]>([]);
 
   useEffect(() => {
     const saved = loadOpenApps().filter((id): id is RaAppId => RA_APPS.some((app) => app.id === id));
     setOrder(saved);
-    setWins(
-      saved.map((id, i) => ({
-        id,
-        x: 48 + i * 28,
-        y: 72 + i * 24,
-        z: 30 + i,
-      })),
-    );
-    zRef.current = 30 + saved.length;
+    let next: LiveWindow[] = [];
+    for (const id of saved) {
+      next = openWindow(next, id, { ...APP_SEED[id], x: 48 + next.length * 28, y: 72 + next.length * 24 });
+    }
+    setWins(next);
   }, []);
 
   useEffect(() => {
@@ -635,17 +565,7 @@ export function CompanionApps({
       next.push(id);
       return next;
     });
-    setWins((prev) => {
-      const rest = prev.filter((row) => row.id !== id);
-      zRef.current += 1;
-      const found = prev.find((row) => row.id === id);
-      return [
-        ...rest,
-        found
-          ? { ...found, z: zRef.current }
-          : { id, x: 56 + rest.length * 24, y: 80 + rest.length * 20, z: zRef.current },
-      ];
-    });
+    setWins((prev) => openWindow(prev, id, APP_SEED[id]));
     setNavOpen(false);
   }
 
@@ -657,7 +577,7 @@ export function CompanionApps({
 
   function close(id: RaAppId) {
     setOrder((prev) => prev.filter((row) => row !== id));
-    setWins((prev) => prev.filter((row) => row.id !== id));
+    setWins((prev) => closeWindow(prev, id));
   }
 
   function pane(id: RaAppId) {
@@ -686,29 +606,39 @@ export function CompanionApps({
 
   return (
     <>
-      <RaNav
-        open={navOpen}
+      <AppDock
+        choosing={navOpen}
         active={active}
-        onToggle={() => setNavOpen((v) => !v)}
+        phone={phone}
+        hasOpen={order.length > 0}
         onPick={pick}
-        switchOnly={phone && order.length > 0}
+        onSwitch={() => setNavOpen(true)}
       />
       {visible.map((id) => {
-        const pos = positions.get(id) || { id, x: 64, y: 88, z: 40 };
+        const pos = positions.get(id) || {
+          id,
+          x: 64,
+          y: 88,
+          z: 40,
+          w: APP_SEED[id].w,
+          h: APP_SEED[id].h,
+        };
+        const label = RA_APPS.find((app) => app.id === id)?.label || id;
         return (
-          <MiniappChrome
+          <DeskWindow
             key={id}
             id={id}
+            title={label}
             phone={phone}
             pos={pos}
+            variant="app"
             onClose={() => close(id)}
-            onFocus={() => pick(id)}
-            onMove={(x, y) =>
-              setWins((prev) => prev.map((row) => (row.id === id ? { ...row, x: Math.max(8, x), y: Math.max(8, y) } : row)))
-            }
+            onFocus={() => setWins((prev) => focusWindow(prev, id))}
+            onMove={(x, y) => setWins((prev) => moveWindow(prev, id, x, y))}
+            onResize={(next) => setWins((prev) => resizeWindow(prev, id, next))}
           >
             {pane(id)}
-          </MiniappChrome>
+          </DeskWindow>
         );
       })}
     </>

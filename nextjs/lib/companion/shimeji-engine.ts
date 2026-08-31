@@ -27,7 +27,11 @@ export const PHYSICS = {
   gravity: 2,
   walkSpeed: 2,
   fallTerminalVelocity: 20,
+  bounce: 0.72,
+  throwFastSpeed: 10,
 } as const;
+
+export type ThrowMode = "bounce" | "grab" | null;
 
 export const State = {
   IDLE: "idle",
@@ -175,6 +179,7 @@ export type ShimejiMascot = {
   forceWorking: boolean;
   edge: DeskEdge;
   flockId: string;
+  throwMode: ThrowMode;
 };
 
 function animDuration(name: string): number {
@@ -307,6 +312,28 @@ export function startWalkingOnEdge(m: ShimejiMascot, edge: DeskEdge, clockwise: 
   setAnim(m, State.WALKING, walkCycleName(m.facingRight));
 }
 
+function clockwiseOnEdge(edge: DeskEdge, facingRight: boolean) {
+  if (edge === "floor" || edge === "right") return facingRight;
+  return !facingRight;
+}
+
+export function clingToEdge(m: ShimejiMascot, bounds: Bounds, scale: number, edge: DeskEdge) {
+  m.throwMode = null;
+  m.velocityX = 0;
+  m.velocityY = 0;
+  m.edge = edge;
+  pinToEdge(m, bounds, scale);
+  startWalkingOnEdge(m, edge, clockwiseOnEdge(edge, m.facingRight));
+}
+
+export function throwSpeed(m: Pick<ShimejiMascot, "smoothedVelocityX" | "smoothedVelocityY">): number {
+  return Math.hypot(m.smoothedVelocityX, m.smoothedVelocityY);
+}
+
+export function throwKind(speed: number): "slow" | "fast" {
+  return speed >= PHYSICS.throwFastSpeed ? "fast" : "slow";
+}
+
 export function sitAtPcSpriteKeys(): string[] {
   return ["sit-pc-edge-legs-down", "sit-pc-edge-dangle-frame-1", "sit-pc-edge-dangle-frame-2"];
 }
@@ -348,6 +375,7 @@ export function createMascot(bounds: Bounds, scale: number): ShimejiMascot {
     forceWorking: false,
     edge: "floor",
     flockId: `pet-${Math.random().toString(36).slice(2, 8)}`,
+    throwMode: null,
   };
 }
 
@@ -487,18 +515,34 @@ function updateState(m: ShimejiMascot, bounds: Bounds, scale: number, perch: Per
       m.x += m.velocityX;
       if (m.x <= e.left) {
         m.x = e.left;
-        m.velocityX = Math.abs(m.velocityX);
+        if (m.throwMode === "grab") {
+          clingToEdge(m, bounds, scale, "left");
+          break;
+        }
+        m.velocityX = Math.abs(m.velocityX) * PHYSICS.bounce;
         m.facingRight = true;
-      }
-      if (m.x >= e.right) {
+      } else if (m.x >= e.right) {
         m.x = e.right;
-        m.velocityX = -Math.abs(m.velocityX);
+        if (m.throwMode === "grab") {
+          clingToEdge(m, bounds, scale, "right");
+          break;
+        }
+        m.velocityX = -Math.abs(m.velocityX) * PHYSICS.bounce;
         m.facingRight = false;
+      }
+      if (m.y <= e.ceiling) {
+        m.y = e.ceiling;
+        if (m.throwMode === "grab") {
+          clingToEdge(m, bounds, scale, "ceiling");
+          break;
+        }
+        m.velocityY = Math.abs(m.velocityY) * PHYSICS.bounce;
       }
       if (m.y >= e.floor) {
         m.y = e.floor;
         m.velocityY = 0;
         m.velocityX = 0;
+        m.throwMode = null;
         m.edge = "floor";
         setAnim(m, State.SPRAWLED, "sprawled");
       }
@@ -732,6 +776,9 @@ export function promoteDrag(m: ShimejiMascot) {
   m.prevDragY = m.y;
   m.smoothedVelocityX = 0;
   m.smoothedVelocityY = 0;
+  m.velocityX = 0;
+  m.velocityY = 0;
+  m.throwMode = null;
   m.dragTick = 0;
   m.forceWorking = false;
 }
@@ -770,15 +817,26 @@ export function endDrag(m: ShimejiMascot, bounds?: Bounds, scale = 1) {
   }
   if (!m.isDragging) return "none" as const;
   m.isDragging = false;
-  m.velocityX = 0;
-  m.velocityY = 0;
+  const speed = throwSpeed(m);
+  m.velocityX = m.smoothedVelocityX;
+  m.velocityY = m.smoothedVelocityY;
   m.smoothedVelocityX = 0;
   m.smoothedVelocityY = 0;
   const box = bounds ?? { width: Math.max(320, m.x + SPRITE_SIZE), height: Math.max(240, m.y) };
-  snapToNearestEdge(m, box, scale);
-  const clockwise = m.edge === "floor" || m.edge === "right" ? m.facingRight : !m.facingRight;
-  startWalkingOnEdge(m, m.edge, clockwise);
-  return "drop" as const;
+  const kind = throwKind(speed);
+  if (kind === "slow") {
+    const edge = nearestEdge(m.x, m.y, box, scale);
+    if (edge === "left" || edge === "right" || edge === "ceiling") {
+      clingToEdge(m, box, scale, edge);
+      return "grab" as const;
+    }
+    m.throwMode = "grab";
+    setAnim(m, State.FALLING, "falling");
+    return "drop" as const;
+  }
+  m.throwMode = "bounce";
+  setAnim(m, State.FALLING, "falling");
+  return "throw" as const;
 }
 
 export function setWorking(m: ShimejiMascot, working: boolean) {

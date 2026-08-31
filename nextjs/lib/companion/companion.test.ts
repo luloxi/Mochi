@@ -358,18 +358,25 @@ describe("shimeji perimeter + collision + snap", () => {
     assert.notEqual(a.direction, b.direction);
   });
 
-  it("endDrag snaps to the nearest edge and starts walking, never falling", () => {
+  it("slow endDrag grabs the nearest wall or ceiling; a click still clicks", () => {
     const m = createMascot(bounds, scale);
     m.x = 200;
     m.y = 150;
     promoteDrag(m);
     assert.equal(m.state, State.DRAGGED);
+    m.smoothedVelocityX = 1;
+    m.smoothedVelocityY = 0;
     const result = endDrag(m, bounds, scale);
-    assert.equal(result, "drop");
     assert.equal(m.isDragging, false);
-    assert.notEqual(m.state, State.FALLING);
-    assert.equal(m.state, State.WALKING);
-    assert.equal(m.edge, nearestEdge(200, 150, bounds, scale));
+    const edge = nearestEdge(200, 150, bounds, scale);
+    if (edge === "floor") {
+      assert.equal(result, "drop");
+      assert.equal(m.state, State.FALLING);
+    } else {
+      assert.equal(result, "grab");
+      assert.equal(m.state, State.WALKING);
+      assert.equal(m.edge, edge);
+    }
     snapToNearestEdge(m, bounds, scale);
     if (m.edge === "ceiling") assert.equal(m.y, ceiling);
     if (m.edge === "floor") assert.equal(m.y, floor);

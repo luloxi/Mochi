@@ -123,11 +123,19 @@ export type PetClickRole = "human" | "help" | "nimbo";
 /**
  * Seat lulox (gato): Mochi = human with Katho; gatito = HELP; Nimbo = IA.
  * Seat katho: gatito = human with Lulox; her Mochi = HELP; Nimbo = IA.
+ * Nimbo / Ra click is chat, never the app dock.
  */
 export function roleForPetClick(seat: PersonId, pack: SpritePackId): PetClickRole {
   if (pack === "nimbo") return "nimbo";
   if (seat === "lulox") return pack === "mochi" ? "human" : "help";
   return pack === "lulox" ? "human" : "help";
+}
+
+export type ClickLaunch = { kind: "chat"; chat: PetClickRole } | { kind: "app"; app: string };
+
+export function launchTargetFor(source: "nimbo" | "ra-pet" | "dock", appId?: string): ClickLaunch {
+  if (source === "dock") return { kind: "app", app: appId || "boards" };
+  return { kind: "chat", chat: "nimbo" };
 }
 
 export const HELP_SOUL = `Sos la ayuda del escritorio Compañera.
@@ -136,10 +144,11 @@ Katho es ella. Lulox es él. Los dos. Nada de lenguaje inclusivo.
 Explicá la app, no des discurso de producto.
 Hay tres bichos: Mochi (coneja de Katho), Lulox (gato ninja) y Nimbo (IA).
 Tu bicho te explica. El de la otra persona es el chat humano.
-Nimbo es Ra, el tomate y las tareas. Si Ra no está, el botón Ra muestra cómo conectar la casa. No hay tablero embebido. Los bichos son el canal.
-Se arrastran y se pegan a la orilla más cerca: piso, paredes y techo.
-El botón Ra abre las miniapps. En el celu, escritorio = los tres; foco = solo Nimbo.
-Caritas: verde presente, amarillo idle, rojo desconectado.`;
+Nimbo es el chat de la IA. Las apps salen del dock de abajo al centro, no tocando a Nimbo.
+Si Ra no está, la app Ra del dock muestra cómo conectar la casa. No hay tablero embebido.
+Se arrastran. Tiro rápido: caen con gravedad y rebotan en las paredes. Tiro lento: se agarran a la pared o al techo y siguen.
+En el celu, escritorio = los tres; foco = solo Nimbo. Un botón para cambiar de app.
+Puntitos: verde presente, amarillo idle, rojo desconectado. Hover (o dejar el dedo) dice el nombre, de quién es y el estado.`;
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
 
@@ -152,22 +161,22 @@ export function localHelpReply(userText: string, seat: PersonId): string {
     return `Hola. Soy ${own}. Te explico la app. ${other} es el chat humano. Nimbo es la IA de Ra.`;
   }
   if (/\b(conectar|casa)\b/.test(t)) {
-    return "Ra es la casa. El botón Ra te muestra tres pasos. Tocá conectar y dale que sí.";
+    return "Ra es la casa. En el dock de abajo abrí Ra: tres pasos. Tocá conectar y dale que sí.";
   }
   if (/\b(nimbo|ia|ra|tarea|tomate|pomo)\b/.test(t)) {
-    return "Nimbo es la IA. Hablale de Ra, el tomate o una tarea. Si Ra no está, abrí Ra y conectá la casa.";
+    return "Nimbo es el chat de la IA. Hablale de Ra, el tomate o una tarea. Las apps están en el dock de abajo, no en Nimbo.";
   }
   if (/\b(chat|humano|katho|lulox|recado|mensaje)\b/.test(t)) {
     return `Tocá a ${other} para el chat humano. Tu bicho (${own}) es la ayuda.`;
   }
-  if (/\b(arrastr|drag|pared|techo|piso|camin)\b/.test(t)) {
-    return "Arrastralos. Al soltar se pegan a la orilla más cerca y siguen: piso, pared, techo.";
+  if (/\b(arrastr|drag|pared|techo|piso|camin|tir|graved|rebot)\b/.test(t)) {
+    return "Arrastralos. Si los tirás rápido caen y rebotan. Si vas lento se agarran a la pared o al techo y siguen.";
   }
-  if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono)\b/.test(t)) {
-    return "El botón Ra abre las apps. En el celu, escritorio son los tres; foco es solo Nimbo a pantalla.";
+  if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono|dock)\b/.test(t)) {
+    return "Las apps salen del dock de abajo al centro. En el celu, escritorio son los tres; foco es la app a pantalla. Cambiar es un botón.";
   }
-  if (/\b(carita|presenc|verde|rojo|amarillo|desconect)\b/.test(t)) {
-    return "Caritas en el escritorio: verde presente, amarillo idle, rojo se fue.";
+  if (/\b(carita|presenc|verde|rojo|amarillo|desconect|puntit|hover)\b/.test(t)) {
+    return "Puntitos: verde presente, amarillo idle, rojo desconectado. El hover dice el nombre, de quién es y el estado.";
   }
   return `Soy ${own}, la ayuda. ${other} es el chat con la otra persona. Nimbo es Ra. Tocá y preguntá.`;
 }
