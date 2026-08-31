@@ -9,6 +9,7 @@ type Gsi = {
     id: {
       initialize: (opts: Record<string, unknown>) => void;
       renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void;
+      prompt: () => void;
     };
   };
 };
