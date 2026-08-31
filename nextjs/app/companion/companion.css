@@ -197,7 +197,7 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 .companion-overlay {
   position: fixed;
   inset: 0;
-  z-index: 28;
+  z-index: 160;
   pointer-events: none;
 }
 
@@ -500,18 +500,39 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   display: flex;
   gap: 10px;
   overflow: auto;
-  max-height: 52vh;
-  min-height: 28vh;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  align-items: stretch;
   padding-bottom: 8px;
 }
 
 .board-column {
-  min-width: 148px;
-  flex: 1;
-  background: #fff;
-  border: 2px solid var(--c-ink);
+  min-width: 240px;
+  width: 240px;
+  flex: 0 0 240px;
+  background: #ebecf0;
+  border: 1px solid #d0cdc6;
   border-radius: 12px;
-  padding: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.board-cards {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-column .miniapp-add {
+  flex: 0 0 auto;
+  margin-top: 6px;
 }
 
 .board-column.is-drop {
@@ -627,8 +648,26 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 }
 
 .miniapp-window[data-miniapp-window="boards"] {
-  width: min(640px, 94vw);
-  max-height: 82vh;
+  width: min(960px, 94vw);
+  height: min(78vh, 720px);
+  max-height: min(82vh, 760px);
+  overflow: hidden;
+}
+
+.miniapp-window.is-minimized,
+.miniapp-full.is-minimized {
+  /* off-screen, still mounted — video/radio keep playing */
+  transform: translate(-200vw, -200vh) !important;
+  pointer-events: none !important;
+}
+
+.ra-game {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
 }
 
 .ra-game .feel-dots {
@@ -655,6 +694,34 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   margin-bottom: 5px;
   color: #140c18;
   border: 1px solid #140c18;
+}
+
+.board-card {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background: #fff;
+  border: 1px solid #d8d4cc;
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(9, 30, 66, 0.2);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  color: #172b4d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.board-card.is-on {
+  box-shadow: 0 0 0 2px #026aa7;
+}
+
+.board-card-label {
+  display: block;
+  width: 40px;
+  height: 8px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  border: 0;
 }
 
 .board-feel-red { background: #e85d4c; color: #fff; }
@@ -834,6 +901,10 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   border: 0;
 }
 
+.miniapp-full .miniapp-body {
+  padding-bottom: 72px;
+}
+
 .miniapp-chrome {
   display: flex;
   align-items: center;
@@ -929,6 +1000,15 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   min-height: 0;
   overflow: auto;
   flex: 1;
+}
+
+.miniapp-body.ra-game {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+  position: relative;
 }
 
 .miniapp-kicker {
@@ -1041,15 +1121,63 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   opacity: 0.85;
 }
 
+.ra-card-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: 18px 12px;
+  pointer-events: auto;
+}
+
+.ra-card-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(20, 12, 24, 0.58);
+  cursor: pointer;
+}
+
 .ra-card-sheet {
-  margin-top: 10px;
+  position: relative;
+  z-index: 1;
+  width: min(720px, 94vw);
+  max-height: min(84vh, 720px);
+  overflow: auto;
   border: 2px solid var(--c-ink);
   border-radius: 12px;
-  background: #fff8ee;
-  padding: 8px;
+  background: #fff;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: 8px 12px 0 var(--c-ink);
+}
+
+.ra-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ra-checklist ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ra-checklist label {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
 }
 
 .ra-card-sheet-head {

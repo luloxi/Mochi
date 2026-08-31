@@ -25,6 +25,7 @@ import {
   RA_MISSING_LINE,
   archiveCardOnBoard,
   assignCardOnBoard,
+  checkItemOnBoard,
   colorCardOnBoard,
   describeCardOnBoard,
   dueCardOnBoard,
@@ -524,8 +525,8 @@ export function CompanionSurface() {
         onLuloxClick={clickLulox}
         onNimboClick={clickNimbo}
         scale={0.6}
-        showMochi={!phoneFoco}
-        showLulox={!phoneFoco}
+        showMochi
+        showLulox
         showNimbo
       />
 
@@ -564,13 +565,13 @@ export function CompanionSurface() {
               })
               .catch(() => addTodoItem(title));
           }}
-          onRaMove={(cardId, listId) => {
-            setBoard((prev) => moveCardOnBoard(prev, cardId, listId));
+          onRaMove={(cardId, listId, pos) => {
+            setBoard((prev) => moveCardOnBoard(prev, cardId, listId, pos));
             void fetch("/api/companion/trello", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "move", cardId, listId }),
+              body: JSON.stringify({ action: "move", cardId, listId, pos }),
             })
               .then((res) => res.json())
               .then((json) => {
@@ -631,6 +632,9 @@ export function CompanionSurface() {
               if (patch.action === "desc") return describeCardOnBoard(prev, patch.cardId, patch.desc);
               if (patch.action === "due") return dueCardOnBoard(prev, patch.cardId, patch.due);
               if (patch.action === "assign") return assignCardOnBoard(prev, patch.cardId, patch.memberId);
+              if (patch.action === "check") {
+                return checkItemOnBoard(prev, patch.cardId, patch.itemId, patch.complete);
+              }
               return linkCardOnBoard(prev, patch.cardId, {
                 id: patch.url,
                 name: patch.url,
@@ -644,7 +648,9 @@ export function CompanionSurface() {
                   ? { action: "due", cardId: patch.cardId, due: patch.due }
                   : patch.action === "assign"
                     ? { action: "assign", cardId: patch.cardId, memberId: patch.memberId }
-                    : { action: "link", cardId: patch.cardId, url: patch.url };
+                    : patch.action === "check"
+                      ? { action: "check", cardId: patch.cardId, itemId: patch.itemId, complete: patch.complete }
+                      : { action: "link", cardId: patch.cardId, url: patch.url };
             void fetch("/api/companion/trello", {
               method: "POST",
               credentials: "include",

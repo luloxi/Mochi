@@ -31,13 +31,15 @@ import {
 } from "@/lib/companion/house";
 import { RADIO_STATIONS, radioStationById, type RadioStationId } from "@/lib/companion/radio";
 import { extractYouTubeId, youtubeEmbedUrl } from "@/lib/companion/youtube";
-import { emptyRaBoard, raConnectWizard, type RaBoard } from "@/lib/companion/trello";
+import { emptyRaBoard, insertPos, raConnectWizard, sortedOpenCards, type RaBoard, type RaCard } from "@/lib/companion/trello";
 import {
+  clickDockApp,
   closeWindow,
   focusWindow,
   moveWindow,
   openWindow,
   resizeWindow,
+  windowIsVisible,
   type LiveWindow,
 } from "@/lib/companion/windows";
 import { DeskWindow, usePhone } from "@/components/companion/companion-window";
@@ -47,7 +49,7 @@ const APP_SEED: Record<RaAppId, { w: number; h: number }> = {
   notas: { w: 280, h: 320 },
   video: { w: 360, h: 320 },
   radio: { w: 300, h: 240 },
-  boards: { w: 640, h: 480 },
+  boards: { w: 960, h: 680 },
 };
 
 function formatRemain(sec: number) {
@@ -57,43 +59,33 @@ function formatRemain(sec: number) {
 }
 
 function AppDock({
-  choosing,
-  active,
-  phone,
-  hasOpen,
+  visibleIds,
   onPick,
-  onSwitch,
 }: {
-  choosing: boolean;
-  active: RaAppId | null;
-  phone: boolean;
-  hasOpen: boolean;
+  visibleIds: RaAppId[];
   onPick: (id: RaAppId) => void;
-  onSwitch: () => void;
 }) {
-  const switchOnly = phone && hasOpen && !choosing;
   return (
     <div className="app-dock" data-app-dock data-ra-dock>
-      {switchOnly ? (
-        <button type="button" className="ra-switch" data-ra-switch onClick={onSwitch}>
-          cambiar
-        </button>
-      ) : (
-        <nav className="app-dock-nav" data-ra-nav aria-label="Apps">
-          {RA_APPS.map((app) => (
+      <nav className="app-dock-nav" data-ra-nav aria-label="Apps">
+        {RA_APPS.map((app) => {
+          const open = visibleIds.includes(app.id);
+          return (
             <button
               key={app.id}
               type="button"
-              className={`dock-btn${active === app.id ? " is-on" : ""}`}
+              className={`dock-btn${open ? " is-on" : ""}`}
               data-ra-app={app.id}
               data-dock-app={app.id}
+              data-dock-open={open ? "true" : "false"}
+              aria-pressed={open}
               onClick={() => onPick(app.id)}
             >
               {app.label}
             </button>
-          ))}
-        </nav>
-      )}
+          );
+        })}
+      </nav>
     </div>
   );
 }
@@ -293,6 +285,8 @@ type RaDrag = {
   grabX: number;
   grabY: number;
   overListId: string | null;
+  overIndex: number | null;
+  overPos: number | null;
   overArchive: boolean;
 };
 
@@ -358,6 +352,159 @@ function ColorDots({
   );
 }
 
+function RaCardModal({
+  card,
+  board,
+  descDraft,
+  linkDraft,
+  setDescDraft,
+  setLinkDraft,
+  onClose,
+  onColor,
+  onHouse,
+  onArchive,
+  onDone,
+}: {
+  card: RaCard;
+  board: RaBoard;
+  descDraft: string;
+  linkDraft: string;
+  setDescDraft: (value: string) => void;
+  setLinkDraft: (value: string) => void;
+  onClose: () => void;
+  onColor: (cardId: string, color: FeelColor) => void;
+  onHouse: (patch: HouseCardPatch) => void;
+  onArchive: (cardId: string) => void;
+  onDone: (cardId: string) => void;
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="ra-card-modal" data-ra-card-modal>
+      <button type="button" className="ra-card-backdrop" aria-label="cerrar" data-ra-detail-backdrop onClick={onClose} />
+      <div className="ra-card-sheet" data-ra-detail data-house-detail role="dialog" aria-modal="true" aria-labelledby="ra-card-title">
+        <header className="ra-card-sheet-head">
+          <strong id="ra-card-title">{card.name}</strong>
+          <button type="button" className="board-mini-btn" onClick={onClose}>
+            cerrar
+          </button>
+        </header>
+        <ColorDots current={card.feel} onPick={(color) => onColor(card.id, color)} />
+        {(card.checklists || []).map((list) => (
+          <div key={list.id} className="ra-checklist" data-ra-checklist={list.id}>
+            <strong>{list.name}</strong>
+            <ul>
+              {list.items.map((item) => (
+                <li key={item.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={item.complete}
+                      aria-label={item.name}
+                      onChange={() =>
+                        onHouse({
+                          action: "check",
+                          cardId: card.id,
+                          itemId: item.id,
+                          complete: !item.complete,
+                        })
+                      }
+                    />
+                    {item.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        <label className="ra-field">
+          qué es
+          <textarea
+            value={descDraft}
+            onChange={(event) => setDescDraft(event.target.value)}
+            onBlur={() => {
+              if (descDraft !== (card.desc || "")) onHouse({ action: "desc", cardId: card.id, desc: descDraft });
+            }}
+            rows={4}
+            aria-label="descripción"
+          />
+        </label>
+        <label className="ra-field">
+          fecha
+          <input
+            type="date"
+            value={formatHouseDue(card.due)}
+            aria-label="fecha"
+            onChange={(event) => {
+              const value = event.target.value;
+              onHouse({ action: "due", cardId: card.id, due: value ? `${value}T12:00:00.000Z` : null });
+            }}
+          />
+        </label>
+        <label className="ra-field">
+          quién
+          <select
+            value={card.idMembers[0] || ""}
+            aria-label="responsable"
+            onChange={(event) => onHouse({ action: "assign", cardId: card.id, memberId: event.target.value || null })}
+          >
+            <option value="">nadie</option>
+            {board.members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {assigneeLine(member) || member.fullName || member.username}
+              </option>
+            ))}
+          </select>
+        </label>
+        <ul className="ra-links" data-house-links>
+          {card.links.length === 0 ? <li>sin links</li> : null}
+          {card.links.map((link) => (
+            <li key={link.id}>
+              <a href={link.url} target="_blank" rel="noreferrer">
+                {link.name}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <form
+          className="miniapp-add"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const url = extractHttpUrl(linkDraft) || linkDraft.trim();
+            if (!url) return;
+            onHouse({ action: "link", cardId: card.id, url });
+            setLinkDraft("");
+          }}
+        >
+          <input
+            value={linkDraft}
+            onChange={(event) => setLinkDraft(event.target.value)}
+            placeholder="pegá un link"
+            aria-label="link"
+          />
+          <button type="submit" disabled={!linkDraft.trim()}>
+            ok
+          </button>
+        </form>
+        <div className="board-card-ops">
+          <button type="button" className="board-mini-btn" data-house-archive onClick={() => onArchive(card.id)}>
+            archivar
+          </button>
+          <button type="button" className="board-mini-btn" onClick={() => onDone(card.id)}>
+            listo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RaPane({
   board,
   seat,
@@ -375,7 +522,7 @@ function RaPane({
   authorizeUrl: string | null;
   phone: boolean;
   onAdd: (title: string, listId?: string) => void;
-  onMove: (cardId: string, listId: string) => void;
+  onMove: (cardId: string, listId: string, pos?: number) => void;
   onDone: (cardId: string) => void;
   onColor: (cardId: string, color: FeelColor) => void;
   onArchive: (cardId: string) => void;
@@ -407,7 +554,10 @@ function RaPane({
       const action = parseHouseShortcut(event);
       if (action.type === "none" || !selectedId) return;
       event.preventDefault();
-      if (action.type === "archive") onArchive(selectedId);
+      if (action.type === "archive") {
+        onArchive(selectedId);
+        setOpenId((id) => (id === selectedId ? null : id));
+      }
       if (action.type === "color") onColor(selectedId, action.color);
     }
     window.addEventListener("keydown", onKey);
@@ -422,10 +572,21 @@ function RaPane({
     );
   }
 
-  function hitList(x: number, y: number): string | null {
+  function hitSlot(x: number, y: number, draggedId: string): { listId: string; index: number; pos: number } | null {
     for (const [id, el] of colRefs.current) {
       const r = el.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return id;
+      if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+      const nodes = [...el.querySelectorAll<HTMLElement>("[data-ra-card]")];
+      let index = nodes.length;
+      for (let i = 0; i < nodes.length; i++) {
+        const cr = nodes[i].getBoundingClientRect();
+        if (y < cr.top + cr.height / 2) {
+          index = i;
+          break;
+        }
+      }
+      const rest = sortedOpenCards(board, id, draggedId);
+      return { listId: id, index, pos: insertPos(rest.map((card) => card.pos), index) };
     }
     return null;
   }
@@ -443,6 +604,8 @@ function RaPane({
       grabX: event.clientX,
       grabY: event.clientY,
       overListId: null,
+      overIndex: null,
+      overPos: null,
       overArchive: dragHitsArchive(event.clientY),
     };
     dragRef.current = next;
@@ -452,11 +615,14 @@ function RaPane({
   function onCardMove(event: PointerEvent<HTMLElement>) {
     if (!dragRef.current) return;
     const overArchive = dragHitsArchive(event.clientY);
+    const slot = overArchive ? null : hitSlot(event.clientX, event.clientY, dragRef.current.cardId);
     const next: RaDrag = {
       ...dragRef.current,
       x: event.clientX,
       y: event.clientY,
-      overListId: overArchive ? null : hitList(event.clientX, event.clientY),
+      overListId: slot?.listId ?? null,
+      overIndex: slot?.index ?? null,
+      overPos: slot?.pos ?? null,
       overArchive,
     };
     dragRef.current = next;
@@ -481,7 +647,7 @@ function RaPane({
       return;
     }
     if (moved && current.overListId) {
-      onMove(current.cardId, current.overListId);
+      onMove(current.cardId, current.overListId, current.overPos ?? undefined);
       return;
     }
     if (!moved) {
@@ -516,32 +682,38 @@ function RaPane({
       data-ra-game
       data-house-shortcut="e,1-6"
       data-archive-y={TOP_ARCHIVE_Y}
+      data-tareas-pane
     >
-      <p className="miniapp-kicker">Ra</p>
+      <p className="miniapp-kicker">tareas</p>
       <p className="ra-game-hint">
-        {phone ? "tirá las tarjetas. arriba se archivan." : "tirá las tarjetas. arriba se archivan. E archiva · 1–6 color."}
+        {phone ? "click abre. arrastrá para mover." : "click abre. arrastrá para mover. E archiva · 1–6 color."}
       </p>
-      <div className="board-mini">
+      <div className="board-mini" data-board-scroll>
         {board.lists.map((list) => (
           <div
             key={list.id}
             className={`board-column${drag?.overListId === list.id ? " is-drop" : ""}`}
             data-ra-list={list.id}
+            data-drop-index={drag?.overListId === list.id ? String(drag.overIndex ?? "") : undefined}
             ref={(el) => {
               if (el) colRefs.current.set(list.id, el);
               else colRefs.current.delete(list.id);
             }}
           >
             <span className="board-col-title">{list.name}</span>
-            {board.cards
-              .filter((card) => card.idList === list.id && !card.closed && card.id !== drag?.cardId)
-              .map((card) => {
+            <div className="board-cards">
+              {sortedOpenCards(board, list.id, drag?.cardId).map((card) => {
                 const who = assigneeLine(card.members[0]);
                 const when = formatHouseDue(card.due);
+                const checks = (card.checklists || []).reduce(
+                  (sum, list) => sum + list.items.filter((item) => item.complete).length,
+                  0,
+                );
+                const totalChecks = (card.checklists || []).reduce((sum, list) => sum + list.items.length, 0);
                 return (
                   <div
                     key={card.id}
-                    className={`board-feel board-feel-${card.feel || "gold"}${selectedId === card.id ? " is-on" : ""}`}
+                    className={`board-card${selectedId === card.id ? " is-on" : ""}`}
                     data-ra-card={card.id}
                     data-house-card={card.id}
                     data-selected={selectedId === card.id ? "true" : "false"}
@@ -550,23 +722,22 @@ function RaPane({
                     onPointerUp={onCardUp}
                     onPointerCancel={onCardUp}
                   >
+                    {card.feel ? (
+                      <span className={`board-card-label board-feel-${card.feel}`} data-house-color-bar={card.feel} />
+                    ) : null}
                     <span className="board-card-title">{card.name}</span>
-                    {who || when ? (
+                    {who || when || totalChecks ? (
                       <span className="board-card-meta">
                         {who}
                         {who && when ? " · " : ""}
                         {when}
+                        {totalChecks ? `${who || when ? " · " : ""}${checks}/${totalChecks}` : ""}
                       </span>
                     ) : null}
-                    <ColorDots current={card.feel} onPick={(color) => onColor(card.id, color)} />
-                    <div className="board-card-ops">
-                      <button type="button" className="board-mini-btn" onClick={() => onDone(card.id)}>
-                        listo
-                      </button>
-                    </div>
                   </div>
                 );
               })}
+            </div>
             <form
               className="miniapp-add"
               onSubmit={(event) => {
@@ -590,97 +761,31 @@ function RaPane({
           </div>
         ))}
       </div>
-      {openCard ? (
-        <div className="ra-card-sheet" data-ra-detail data-house-detail>
-          <header className="ra-card-sheet-head">
-            <strong>{openCard.name}</strong>
-            <button type="button" className="board-mini-btn" onClick={() => setOpenId(null)}>
-              cerrar
-            </button>
-          </header>
-          <ColorDots current={openCard.feel} onPick={(color) => onColor(openCard.id, color)} />
-          <label className="ra-field">
-            qué es
-            <textarea
-              value={descDraft}
-              onChange={(event) => setDescDraft(event.target.value)}
-              onBlur={() => {
-                if (descDraft !== (openCard.desc || "")) onHouse({ action: "desc", cardId: openCard.id, desc: descDraft });
-              }}
-              rows={4}
-              aria-label="descripción"
-            />
-          </label>
-          <label className="ra-field">
-            fecha
-            <input
-              type="date"
-              value={formatHouseDue(openCard.due)}
-              aria-label="fecha"
-              onChange={(event) => {
-                const value = event.target.value;
-                onHouse({ action: "due", cardId: openCard.id, due: value ? `${value}T12:00:00.000Z` : null });
-              }}
-            />
-          </label>
-          <label className="ra-field">
-            quién
-            <select
-              value={openCard.idMembers[0] || ""}
-              aria-label="responsable"
-              onChange={(event) =>
-                onHouse({ action: "assign", cardId: openCard.id, memberId: event.target.value || null })
-              }
-            >
-              <option value="">nadie</option>
-              {board.members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {assigneeLine(member) || member.fullName || member.username}
-                </option>
-              ))}
-            </select>
-          </label>
-          <ul className="ra-links" data-house-links>
-            {openCard.links.length === 0 ? <li>sin links</li> : null}
-            {openCard.links.map((link) => (
-              <li key={link.id}>
-                <a href={link.url} target="_blank" rel="noreferrer">
-                  {link.name}
-                </a>
-              </li>
-            ))}
-          </ul>
-          <form
-            className="miniapp-add"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const url = extractHttpUrl(linkDraft) || linkDraft.trim();
-              if (!url) return;
-              onHouse({ action: "link", cardId: openCard.id, url });
-              setLinkDraft("");
-            }}
-          >
-            <input
-              value={linkDraft}
-              onChange={(event) => setLinkDraft(event.target.value)}
-              placeholder="pegá un link"
-              aria-label="link"
-            />
-            <button type="submit" disabled={!linkDraft.trim()}>
-              ok
-            </button>
-          </form>
-          <div className="board-card-ops">
-            <button type="button" className="board-mini-btn" data-house-archive onClick={() => onArchive(openCard.id)}>
-              archivar
-            </button>
-            <button type="button" className="board-mini-btn" onClick={() => onDone(openCard.id)}>
-              listo
-            </button>
-          </div>
-        </div>
-      ) : null}
       {portal}
+      {openCard && typeof document !== "undefined"
+        ? createPortal(
+            <RaCardModal
+              card={openCard}
+              board={board}
+              descDraft={descDraft}
+              linkDraft={linkDraft}
+              setDescDraft={setDescDraft}
+              setLinkDraft={setLinkDraft}
+              onClose={() => setOpenId(null)}
+              onColor={onColor}
+              onHouse={onHouse}
+              onArchive={(cardId) => {
+                onArchive(cardId);
+                setOpenId(null);
+              }}
+              onDone={(cardId) => {
+                onDone(cardId);
+                setOpenId(null);
+              }}
+            />,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -701,7 +806,7 @@ export function CompanionApps({
   seat?: PersonId;
   authorizeUrl?: string | null;
   onRaAdd: (title: string, listId?: string) => void;
-  onRaMove: (cardId: string, listId: string) => void;
+  onRaMove: (cardId: string, listId: string, pos?: number) => void;
   onRaDone: (cardId: string) => void;
   onRaColor: (cardId: string, color: FeelColor) => void;
   onRaArchive: (cardId: string) => void;
@@ -709,7 +814,6 @@ export function CompanionApps({
   onFoco: (foco: boolean) => void;
 }) {
   const phone = usePhone();
-  const [navOpen, setNavOpen] = useState(false);
   const [order, setOrder] = useState<RaAppId[]>([]);
   const [wins, setWins] = useState<LiveWindow[]>([]);
 
@@ -725,24 +829,33 @@ export function CompanionApps({
 
   useEffect(() => {
     saveOpenApps(order);
-    onFoco(phone && order.length > 0);
-  }, [order, phone, onFoco]);
+    const visible = wins.some((win) => order.includes(win.id as RaAppId) && !win.minimized);
+    onFoco(phone && visible);
+  }, [order, wins, phone, onFoco]);
 
-  const active = order[order.length - 1] || null;
-  const visible = phone ? (active ? [active] : []) : order;
+  const visibleIds = order.filter((id) => windowIsVisible(wins, id));
+  const active = [...visibleIds].reverse()[0] || null;
 
   function pick(id: RaAppId) {
+    const { windows, action } = clickDockApp(wins, id, APP_SEED[id]);
+    setWins(windows);
+    if (action === "minimize") return;
     setOrder((prev) => {
       const next = prev.filter((row) => row !== id);
       next.push(id);
       return next;
     });
-    setWins((prev) => openWindow(prev, id, APP_SEED[id]));
-    setNavOpen(false);
   }
 
   useEffect(() => {
-    const openHouse = () => pick("boards");
+    const openHouse = () => {
+      setWins((prev) => openWindow(prev, "boards", APP_SEED.boards));
+      setOrder((prev) => {
+        const next = prev.filter((row) => row !== "boards");
+        next.push("boards");
+        return next;
+      });
+    };
     window.addEventListener(COMPANION_OPEN_RA, openHouse);
     return () => window.removeEventListener(COMPANION_OPEN_RA, openHouse);
   }, []);
@@ -780,15 +893,8 @@ export function CompanionApps({
 
   return (
     <>
-      <AppDock
-        choosing={navOpen}
-        active={active}
-        phone={phone}
-        hasOpen={order.length > 0}
-        onPick={pick}
-        onSwitch={() => setNavOpen(true)}
-      />
-      {visible.map((id) => {
+      <AppDock visibleIds={visibleIds} onPick={pick} />
+      {order.map((id) => {
         const pos = positions.get(id) || {
           id,
           x: 64,
@@ -798,6 +904,7 @@ export function CompanionApps({
           h: APP_SEED[id].h,
         };
         const label = RA_APPS.find((app) => app.id === id)?.label || id;
+        const minimized = !!pos.minimized || (phone && active !== id);
         return (
           <DeskWindow
             key={id}
@@ -806,6 +913,7 @@ export function CompanionApps({
             phone={phone}
             pos={pos}
             variant="app"
+            minimized={minimized}
             onClose={() => close(id)}
             onFocus={() => setWins((prev) => focusWindow(prev, id))}
             onMove={(x, y) => setWins((prev) => moveWindow(prev, id, x, y))}

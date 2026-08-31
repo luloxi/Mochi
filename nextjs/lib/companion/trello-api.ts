@@ -13,6 +13,7 @@ import {
   applyRaIntent,
   archiveRaCard,
   assignRaCard,
+  checkRaCard,
   colorRaCard,
   describeRaCard,
   doneRaCard,
@@ -98,7 +99,7 @@ export async function handleCompanionTrelloRequest(args: {
   }
 
   if (!trelloConfigured(seat.token, env)) {
-    if (action === "add" || action === "move" || action === "done" || action === "archive" || action === "color" || action === "desc" || action === "due" || action === "assign" || action === "link") {
+    if (action === "add" || action === "move" || action === "done" || action === "archive" || action === "color" || action === "desc" || action === "due" || action === "assign" || action === "link" || action === "check") {
       return {
         status: 200,
         body: publicTrelloPayload({
@@ -142,8 +143,9 @@ export async function handleCompanionTrelloRequest(args: {
     if (action === "move") {
       const cardId = typeof json.cardId === "string" ? json.cardId : "";
       const listId = typeof json.listId === "string" ? json.listId : "";
+      const pos = typeof json.pos === "number" && Number.isFinite(json.pos) ? json.pos : undefined;
       if (!cardId || !listId) return { status: 400, body: { error: "EMPTY" } };
-      await moveRaCard(cardId, listId, seat, fetchImpl);
+      await moveRaCard(cardId, listId, seat, fetchImpl, pos);
       const next = await loadRaBoard(seat, fetchImpl);
       return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "move" }) };
     }
@@ -208,6 +210,15 @@ export async function handleCompanionTrelloRequest(args: {
       await linkRaCard(cardId, url, seat, fetchImpl);
       const next = await loadRaBoard(seat, fetchImpl);
       return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "link" }) };
+    }
+    if (action === "check") {
+      const cardId = typeof json.cardId === "string" ? json.cardId : "";
+      const itemId = typeof json.itemId === "string" ? json.itemId : "";
+      const complete = json.complete === true;
+      if (!cardId || !itemId) return { status: 400, body: { error: "EMPTY" } };
+      await checkRaCard(cardId, itemId, complete, seat, fetchImpl);
+      const next = await loadRaBoard(seat, fetchImpl);
+      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "check" }) };
     }
     if (action === "intent") {
       const text = typeof json.text === "string" ? json.text : "";

@@ -31,6 +31,7 @@ export function DeskWindow({
   onFocus,
   onMove,
   onResize,
+  minimized = false,
   children,
 }: {
   id: string;
@@ -40,6 +41,7 @@ export function DeskWindow({
   variant?: "app" | "talk";
   className?: string;
   tint?: string;
+  minimized?: boolean;
   onClose: () => void;
   onFocus: () => void;
   onMove: (x: number, y: number) => void;
@@ -107,16 +109,19 @@ export function DeskWindow({
 
   const shell =
     full ? "miniapp-full" : variant === "talk" ? `talk-window${className ? ` ${className}` : ""}` : "miniapp-window";
+  const hidden = minimized ? " is-minimized" : "";
 
   return (
     <section
-      className={shell}
+      className={`${shell}${hidden}`}
       data-miniapp-window={variant === "app" ? id : undefined}
       data-talk-window={variant === "talk" ? id : undefined}
       data-talk-never-hide={variant === "talk" ? "true" : undefined}
       data-phone-full={full ? "true" : "false"}
+      data-minimized={minimized ? "true" : "false"}
       data-tint={tint}
       role="dialog"
+      aria-hidden={minimized}
       aria-label={title}
       style={
         canChrome

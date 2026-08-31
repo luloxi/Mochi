@@ -31,6 +31,8 @@ export type RaMember = {
   initials?: string;
 };
 export type RaLink = { id: string; name: string; url: string };
+export type RaCheckItem = { id: string; name: string; complete: boolean; pos: number };
+export type RaChecklist = { id: string; name: string; items: RaCheckItem[] };
 export type RaCard = {
   id: string;
   name: string;
@@ -45,6 +47,7 @@ export type RaCard = {
   idMembers: string[];
   members: RaMember[];
   links: RaLink[];
+  checklists: RaChecklist[];
   url: string | null;
 };
 export type RaBoard = {
@@ -171,6 +174,25 @@ export function cardsInList(board: RaBoard, listId: string): RaCard[] {
   return board.cards.filter((card) => card.idList === listId && !card.closed);
 }
 
+export function sortedOpenCards(board: RaBoard, listId: string, hideId?: string): RaCard[] {
+  return cardsInList(board, listId)
+    .filter((card) => card.id !== hideId)
+    .slice()
+    .sort((a, b) => a.pos - b.pos || a.id.localeCompare(b.id));
+}
+
+/** Trello-style pos for inserting at `index` among existing positions. */
+export function insertPos(positions: number[], index: number): number {
+  const i = Math.max(0, Math.min(Math.round(index), positions.length));
+  const prev = i > 0 ? positions[i - 1] : null;
+  const next = i < positions.length ? positions[i] : null;
+  if (prev == null && next == null) return 65535;
+  if (prev == null) return next / 2;
+  if (next == null) return prev + 65535;
+  if (prev === next) return prev;
+  return (prev + next) / 2;
+}
+
 export function boardLine(board: RaBoard): string {
   if (!board.configured) return RA_MISSING_LINE;
   if (!board.lists.length) return "Ra vacío.";
@@ -226,6 +248,11 @@ export function mapRaCard(raw: {
   labels?: Array<{ id: string; name: string; color: string | null }>;
   members?: Array<{ id?: string; fullName?: string; username?: string; initials?: string }>;
   attachments?: Array<{ id?: string; name?: string; url?: string }>;
+  checklists?: Array<{
+    id?: string;
+    name?: string;
+    checkItems?: Array<{ id?: string; name?: string; state?: string; pos?: number }>;
+  }>;
 }): RaCard {
   const labels = Array.isArray(raw.labels)
     ? raw.labels.map((l) => ({ id: l.id, name: l.name, color: l.color ?? null }))
@@ -244,6 +271,24 @@ export function mapRaCard(raw: {
       url,
     });
   }
+  const checklists: RaChecklist[] = [];
+  for (const row of raw.checklists || []) {
+    const id = String(row.id || "").trim();
+    if (!id) continue;
+    const items: RaCheckItem[] = [];
+    for (const item of row.checkItems || []) {
+      const itemId = String(item.id || "").trim();
+      if (!itemId) continue;
+      items.push({
+        id: itemId,
+        name: String(item.name || ""),
+        complete: String(item.state || "").toLowerCase() === "complete",
+        pos: Number(item.pos) || 0,
+      });
+    }
+    items.sort((a, b) => a.pos - b.pos);
+    checklists.push({ id, name: String(row.name || "lista"), items });
+  }
   return {
     id: raw.id,
     name: raw.name,
@@ -258,14 +303,17 @@ export function mapRaCard(raw: {
     idMembers,
     members,
     links,
+    checklists,
     url: raw.shortUrl || raw.url || null,
   };
 }
 
-export function moveCardOnBoard(board: RaBoard, cardId: string, listId: string): RaBoard {
+export function moveCardOnBoard(board: RaBoard, cardId: string, listId: string, pos?: number): RaBoard {
   return {
     ...board,
-    cards: board.cards.map((card) => (card.id === cardId ? { ...card, idList: listId } : card)),
+    cards: board.cards.map((card) =>
+      card.id === cardId ? { ...card, idList: listId, pos: pos ?? card.pos } : card,
+    ),
   };
 }
 
@@ -329,6 +377,27 @@ export function linkCardOnBoard(board: RaBoard, cardId: string, link: RaLink): R
         ? { ...card, links: [...card.links, link] }
         : card,
     ),
+  };
+}
+
+export function checkItemOnBoard(
+  board: RaBoard,
+  cardId: string,
+  itemId: string,
+  complete: boolean,
+): RaBoard {
+  return {
+    ...board,
+    cards: board.cards.map((card) => {
+      if (card.id !== cardId) return card;
+      return {
+        ...card,
+        checklists: (card.checklists || []).map((list) => ({
+          ...list,
+          items: list.items.map((item) => (item.id === itemId ? { ...item, complete } : item)),
+        })),
+      };
+    }),
   };
 }
 
@@ -535,9 +604,14 @@ export async function loadRaBoard(
         labels?: Array<{ id: string; name: string; color: string | null }>;
         members?: Array<{ id?: string; fullName?: string; username?: string; initials?: string }>;
         attachments?: Array<{ id?: string; name?: string; url?: string }>;
+        checklists?: Array<{
+          id?: string;
+          name?: string;
+          checkItems?: Array<{ id?: string; name?: string; state?: string; pos?: number }>;
+        }>;
       }>
     >(
-      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete,labels,desc,idMembers,url,shortUrl&members=true&member_fields=fullName,username,initials&attachments=true&attachment_fields=url,name,id`,
+      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete,labels,desc,idMembers,url,shortUrl&members=true&member_fields=fullName,username,initials&attachments=true&attachment_fields=url,name,id&checklists=all`,
       creds,
       undefined,
       fetchImpl,
@@ -593,10 +667,31 @@ export async function moveRaCard(
   listId: string,
   seat: RaSeat = {},
   fetchImpl: typeof fetch = fetch,
+  pos?: number,
 ): Promise<void> {
   const creds = credsOrNull(seat);
   if (!creds) throw new Error("TRELLO_UNCONFIGURED");
-  await trelloFetch(`/cards/${cardId}?idList=${encodeURIComponent(listId)}`, creds, { method: "PUT" }, fetchImpl);
+  let path = `/cards/${cardId}?idList=${encodeURIComponent(listId)}`;
+  if (pos != null && Number.isFinite(pos)) path += `&pos=${encodeURIComponent(String(pos))}`;
+  await trelloFetch(path, creds, { method: "PUT" }, fetchImpl);
+}
+
+export async function checkRaCard(
+  cardId: string,
+  itemId: string,
+  complete: boolean,
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const creds = credsOrNull(seat);
+  if (!creds) throw new Error("TRELLO_UNCONFIGURED");
+  const state = complete ? "complete" : "incomplete";
+  await trelloFetch(
+    `/cards/${cardId}/checkItem/${encodeURIComponent(itemId)}?state=${state}`,
+    creds,
+    { method: "PUT" },
+    fetchImpl,
+  );
 }
 
 export async function doneRaCard(

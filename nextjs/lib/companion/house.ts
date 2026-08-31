@@ -21,7 +21,8 @@ export type HouseCardPatch =
   | { action: "desc"; cardId: string; desc: string }
   | { action: "due"; cardId: string; due: string | null }
   | { action: "assign"; cardId: string; memberId: string | null }
-  | { action: "link"; cardId: string; url: string };
+  | { action: "link"; cardId: string; url: string }
+  | { action: "check"; cardId: string; itemId: string; complete: boolean };
 
 export type HouseShortcut =
   | { type: "archive" }

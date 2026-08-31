@@ -1,6 +1,7 @@
 /**
  * Open desk windows. Close removes them; it does not hide them behind.
- * Desktop: drag, z-order, resize. Phone miniapps go fullscreen.
+ * Dock click on an open pane minimizes (keeps state + media). Desktop:
+ * drag, z-order, resize. Phone miniapps go fullscreen.
  */
 
 export type LiveWindow = {
@@ -10,17 +11,30 @@ export type LiveWindow = {
   w: number;
   h: number;
   z: number;
+  minimized?: boolean;
 };
 
 export const MIN_WINDOW = { w: 200, h: 140 };
 export const DEFAULT_WINDOW = { w: 280, h: 320 };
+export const WINDOW_Z_FLOOR = 30;
+/** Stay below companion-overlay (pets) so mascots walk over panes. */
+export const WINDOW_Z_CAP = 80;
 
-export function nextZ(windows: LiveWindow[], floor = 30): number {
-  return windows.reduce((z, win) => Math.max(z, win.z), floor) + 1;
+export function nextZ(windows: LiveWindow[], floor = WINDOW_Z_FLOOR): number {
+  const raw = windows.reduce((z, win) => Math.max(z, win.z), floor) + 1;
+  return Math.min(raw, WINDOW_Z_CAP);
 }
 
 export function windowIsOpen(windows: LiveWindow[], id: string): boolean {
   return windows.some((win) => win.id === id);
+}
+
+export function windowIsMinimized(windows: LiveWindow[], id: string): boolean {
+  return windows.some((win) => win.id === id && !!win.minimized);
+}
+
+export function windowIsVisible(windows: LiveWindow[], id: string): boolean {
+  return windows.some((win) => win.id === id && !win.minimized);
 }
 
 export function openWindow(
@@ -28,10 +42,10 @@ export function openWindow(
   id: string,
   seed?: Partial<Omit<LiveWindow, "id">>,
 ): LiveWindow[] {
-  const z = nextZ(windows, seed?.z != null ? seed.z - 1 : 30);
+  const z = nextZ(windows, seed?.z != null ? seed.z - 1 : WINDOW_Z_FLOOR);
   const found = windows.find((win) => win.id === id);
   if (found) {
-    return windows.map((win) => (win.id === id ? { ...win, z } : win));
+    return windows.map((win) => (win.id === id ? { ...win, z, minimized: false } : win));
   }
   const i = windows.length;
   return [
@@ -43,6 +57,7 @@ export function openWindow(
       w: seed?.w ?? DEFAULT_WINDOW.w,
       h: seed?.h ?? DEFAULT_WINDOW.h,
       z,
+      minimized: false,
     },
   ];
 }
@@ -52,10 +67,35 @@ export function closeWindow(windows: LiveWindow[], id: string): LiveWindow[] {
   return windows.filter((win) => win.id !== id);
 }
 
+/** Hide the pane. Keep it mounted so video/radio keep playing. */
+export function minimizeWindow(windows: LiveWindow[], id: string): LiveWindow[] {
+  return windows.map((win) => (win.id === id ? { ...win, minimized: true } : win));
+}
+
+export function restoreWindow(windows: LiveWindow[], id: string): LiveWindow[] {
+  if (!windowIsOpen(windows, id)) return windows;
+  const z = nextZ(windows);
+  return windows.map((win) => (win.id === id ? { ...win, minimized: false, z } : win));
+}
+
+export type DockClickAction = "open" | "minimize" | "restore";
+
+/** Open item → minimize. Minimized item → restore. Missing → open. */
+export function clickDockApp(
+  windows: LiveWindow[],
+  id: string,
+  seed?: Partial<Omit<LiveWindow, "id">>,
+): { windows: LiveWindow[]; action: DockClickAction } {
+  const found = windows.find((win) => win.id === id);
+  if (!found) return { windows: openWindow(windows, id, seed), action: "open" };
+  if (found.minimized) return { windows: restoreWindow(windows, id), action: "restore" };
+  return { windows: minimizeWindow(windows, id), action: "minimize" };
+}
+
 export function focusWindow(windows: LiveWindow[], id: string): LiveWindow[] {
   if (!windowIsOpen(windows, id)) return windows;
   const z = nextZ(windows);
-  return windows.map((win) => (win.id === id ? { ...win, z } : win));
+  return windows.map((win) => (win.id === id ? { ...win, z, minimized: false } : win));
 }
 
 export function moveWindow(windows: LiveWindow[], id: string, x: number, y: number): LiveWindow[] {

@@ -13,6 +13,7 @@ import {
   localMochiReply,
   nextMascotAlert,
   parseCompanionIntent,
+  RA_APPS,
   startPomodoro,
   tickCompanionDue,
 } from "./companion-core";
@@ -81,15 +82,19 @@ import {
   RA_MISSING_LINE,
   applyRaIntent,
   assignCardOnBoard,
+  checkItemOnBoard,
   colorCardOnBoard,
   describeCardOnBoard,
   dueCardOnBoard,
   emptyRaBoard,
   feelFromLabels,
+  insertPos,
   linkCardOnBoard,
   mapRaCard,
+  moveCardOnBoard,
   parseRaIntent,
   readTrelloTokenFromCallback,
+  sortedOpenCards,
   trelloAuthorizeUrl,
   trelloConfigured,
   wizardCopyText,
@@ -107,7 +112,16 @@ import {
   tickShimeji,
 } from "./shimeji-engine";
 import { handleCompanionTrelloRequest } from "./trello-api";
-import { closeWindow, openWindow, resizeWindow, windowIsOpen } from "./windows";
+import {
+  WINDOW_Z_CAP,
+  clickDockApp,
+  closeWindow,
+  openWindow,
+  resizeWindow,
+  windowIsMinimized,
+  windowIsOpen,
+  windowIsVisible,
+} from "./windows";
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres)\b/i;
 
@@ -812,6 +826,61 @@ describe("windows close for real + resize", () => {
     assert.match(win, /stopPropagation/);
     assert.match(win, /onClose\(\)/);
   });
+
+  it("dock click on an open pane minimizes it and keeps it mounted so media keeps playing", () => {
+    const opened = clickDockApp([], "video");
+    assert.equal(opened.action, "open");
+    assert.equal(windowIsOpen(opened.windows, "video"), true);
+    assert.equal(windowIsVisible(opened.windows, "video"), true);
+    const minimized = clickDockApp(opened.windows, "video");
+    assert.equal(minimized.action, "minimize");
+    assert.equal(windowIsOpen(minimized.windows, "video"), true);
+    assert.equal(windowIsMinimized(minimized.windows, "video"), true);
+    assert.equal(windowIsVisible(minimized.windows, "video"), false);
+    const restored = clickDockApp(minimized.windows, "video");
+    assert.equal(restored.action, "restore");
+    assert.equal(windowIsVisible(restored.windows, "video"), true);
+    assert.ok(restored.windows[0].z <= WINDOW_Z_CAP);
+    const here = dirname(fileURLToPath(import.meta.url));
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    assert.match(apps, /clickDockApp/);
+    assert.match(apps, /minimized=\{minimized\}/);
+    assert.match(css, /\.miniapp-window\.is-minimized[\s\S]*translate\(-200vw/);
+    assert.match(css, /\.companion-overlay[\s\S]*z-index:\s*160/);
+    assert.match(css, /\.app-dock[\s\S]*z-index:\s*80/);
+    assert.equal(WINDOW_Z_CAP, 80);
+    assert.ok(WINDOW_Z_CAP < 160);
+    assert.equal(RA_APPS.find((app) => app.id === "boards")?.label, "tareas");
+    assert.match(apps, /miniapp-kicker">tareas/);
+    assert.doesNotMatch(surface, /showMochi=\{!phoneFoco\}/);
+    assert.doesNotMatch(surface, /showLulox=\{!phoneFoco\}/);
+  });
+});
+
+describe("tareas list order", () => {
+  it("inserts cards between neighbors with Trello-style pos", () => {
+    assert.equal(insertPos([], 0), 65535);
+    assert.equal(insertPos([65535], 0), 65535 / 2);
+    assert.equal(insertPos([65535], 1), 65535 + 65535);
+    assert.equal(insertPos([100, 200], 1), 150);
+    const board: RaBoard = {
+      ...emptyRaBoard(),
+      configured: true,
+      lists: [{ id: "l1", name: "Hoy", pos: 1 }],
+      cards: [
+        mapRaCard({ id: "a", name: "uno", idList: "l1", pos: 100 }),
+        mapRaCard({ id: "b", name: "dos", idList: "l1", pos: 200 }),
+      ],
+    };
+    assert.deepEqual(
+      sortedOpenCards(board, "l1").map((card) => card.id),
+      ["a", "b"],
+    );
+    const moved = moveCardOnBoard(board, "b", "l1", 50);
+    assert.equal(moved.cards.find((card) => card.id === "b")?.pos, 50);
+  });
 });
 
 describe("presence hover copy", () => {
@@ -1000,12 +1069,68 @@ describe("house card details", () => {
     assert.ok(board.cards[0].links.some((row) => row.url === "https://example.com/doc"));
     const here = dirname(fileURLToPath(import.meta.url));
     const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
     assert.match(apps, /data-ra-detail/);
     assert.match(apps, /aria-label="descripción"/);
     assert.match(apps, /aria-label="fecha"/);
     assert.match(apps, /aria-label="responsable"/);
     assert.match(apps, /aria-label="link"/);
     assert.match(apps, /parseHouseShortcut/);
+    assert.match(apps, /createPortal\([\s\S]*<RaCardModal[\s\S]*document\.body/);
+    assert.match(apps, /data-ra-card-modal/);
+    assert.match(apps, /data-ra-detail-backdrop/);
+    const afterBoardMini = apps.split(/className="board-mini" data-board-scroll/)[1] || "";
+    const afterBoardFlow = afterBoardMini.replace(/createPortal\([\s\S]*?,\s*document\.body\s*\)/g, "");
+    assert.doesNotMatch(afterBoardFlow, /data-ra-detail/);
+    assert.doesNotMatch(afterBoardFlow, /ra-card-sheet/);
+    assert.match(css, /\.ra-card-modal[\s\S]*position:\s*fixed/);
+    assert.match(css, /\.ra-card-modal[\s\S]*inset:\s*0/);
+    assert.match(css, /\.ra-card-backdrop[\s\S]*rgba\(/);
+    assert.doesNotMatch(css, /\.ra-card-sheet[\s\S]{0,120}position:\s*absolute/);
+    assert.doesNotMatch(css, /\.ra-card-sheet[\s\S]{0,120}inset:\s*8px/);
+    assert.doesNotMatch(css, /\.ra-card-sheet[\s\S]{0,80}margin-top:\s*10px/);
+    assert.match(apps, /data-tareas-pane/);
+    assert.match(apps, /placeholder="tirá una…"/);
+    assert.match(apps, /<form[\s\S]*placeholder="tirá una…"[\s\S]*<\/form>\s*<\/div>/);
+    const checked = checkItemOnBoard(
+      {
+        ...emptyRaBoard(),
+        cards: [
+          mapRaCard({
+            id: "c1",
+            name: "turno",
+            idList: "l1",
+            checklists: [
+              {
+                id: "cl1",
+                name: "pasos",
+                checkItems: [{ id: "i1", name: "DNI", state: "incomplete", pos: 1 }],
+              },
+            ],
+          }),
+        ],
+      },
+      "c1",
+      "i1",
+      true,
+    );
+    assert.equal(checked.cards[0].checklists[0].items[0].complete, true);
+  });
+
+  it("tareas pane ends at the add-card row; detail is not a sheet under the lists", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const pane = apps.slice(apps.indexOf("function RaPane"), apps.indexOf("export function CompanionApps"));
+    assert.match(pane, /data-tareas-pane/);
+    assert.match(pane, /className="board-mini"/);
+    assert.match(pane, /placeholder="tirá una…"/);
+    assert.match(pane, /createPortal\([\s\S]*<RaCardModal[\s\S]*document\.body/);
+    const afterBoard = pane.slice(pane.indexOf('className="board-mini"'));
+    const flow = afterBoard.replace(/createPortal\([\s\S]*?,\s*document\.body\s*\)/g, "");
+    assert.doesNotMatch(flow, /data-ra-detail/);
+    assert.doesNotMatch(flow, /ra-card-sheet/);
+    assert.ok(pane.indexOf('placeholder="tirá una…"') > pane.indexOf('className="board-mini"'));
+    assert.match(pane, /placeholder="tirá una…"[\s\S]*<\/form>\s*<\/div>\s*\)\)\}/);
   });
 
   it("connected seat can color, archive, describe, date, assign and link", async () => {

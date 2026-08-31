@@ -25,7 +25,7 @@ export const RA_APPS: { id: RaAppId; label: string }[] = [
   { id: "notas", label: "notas" },
   { id: "video", label: "video" },
   { id: "radio", label: "ruido" },
-  { id: "boards", label: "Ra" },
+  { id: "boards", label: "tareas" },
 ];
 
 export type CompanionMsg = {
