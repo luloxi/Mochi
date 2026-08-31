@@ -99,7 +99,10 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   left: 50%;
   top: 18%;
   transform: translateX(-50%);
-  z-index: 45;
+  z-index: 200;
+  pointer-events: auto;
+  isolation: isolate;
+  overflow: visible;
   width: min(280px, 86vw);
   background: #fff;
   border: 2px solid var(--c-ink);
@@ -162,6 +165,13 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   display: flex;
   justify-content: center;
   min-height: 44px;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  isolation: isolate;
+}
+.companion-google-btn iframe {
+  pointer-events: auto;
 }
 
 .companion-overlay {

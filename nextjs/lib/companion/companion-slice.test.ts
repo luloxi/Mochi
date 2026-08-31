@@ -532,7 +532,9 @@ describe("fullscreen companion surface", () => {
     const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
     assert.match(login, /accounts\.google\.com\/gsi\/client/);
     assert.match(login, /253648842852-crcqh36v7bogroqae76f4mchit37nl4i\.apps\.googleusercontent\.com/);
-    assert.match(login, /Authorized JavaScript origin https:\/\/mochiagents\.vercel\.app/);
+    assert.match(login, /use_fedcm_for_prompt:\s*true/);
+    assert.match(login, /auto_select:\s*false/);
+    assert.match(css, /\.companion-login-card[\s\S]*z-index:\s*200/);
   });
 });
 

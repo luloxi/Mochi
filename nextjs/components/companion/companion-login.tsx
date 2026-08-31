@@ -32,7 +32,10 @@ export function CompanionLogin({
       if (!google?.accounts?.id || !btnRef.current) return false;
       google.accounts.id.initialize({
         client_id: clientId,
-        auto_select: true,
+        auto_select: false,
+        cancel_on_tap_outside: false,
+        itp_support: true,
+        use_fedcm_for_prompt: true,
         ux_mode: "popup",
         callback: async (resp: { credential: string }) => {
           const res = await fetch("/api/companion/auth/google", {
@@ -60,7 +63,14 @@ export function CompanionLogin({
         size: "large",
         text: "continue_with",
         shape: "pill",
-        width: 240,
+        width: "240",
+        click_listener: () => {
+          try {
+            google.accounts.id.prompt();
+          } catch {
+            /* GIS button handles the click */
+          }
+        },
       });
       return true;
     };
@@ -84,7 +94,6 @@ export function CompanionLogin({
       <p className="companion-login-hi">Hola.</p>
       <p className="companion-login-line">Katho ella. Lulox él. Los dos.</p>
       {clientId ? <div ref={btnRef} className="companion-google-btn" /> : null}
-      <p className="companion-login-hint">Authorized JavaScript origin https://mochiagents.vercel.app</p>
       {error ? <p className="companion-login-error">{error}</p> : null}
     </div>
   );
