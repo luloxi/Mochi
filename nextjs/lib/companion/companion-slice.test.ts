@@ -374,6 +374,11 @@ describe("fullscreen companion surface", () => {
     assert.match(css, /html:has\(\[data-companion-surface\]\)/);
     assert.match(css, /overflow:\s*hidden/);
     assert.match(css, /100dvh/);
+    const home = readFileSync(join(here, "../../app/page.tsx"), "utf8");
+    const companionPage = readFileSync(join(here, "../../app/companion/page.tsx"), "utf8");
+    assert.match(home, /CompanionSurface/);
+    assert.match(home, /data-companion-surface/);
+    assert.match(companionPage, /redirect\(\"\/\"\)/);
     const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
     assert.match(login, /accounts\.google\.com\/gsi\/client/);
     assert.match(login, /253648842852-crcqh36v7bogroqae76f4mchit37nl4i\.apps\.googleusercontent\.com/);

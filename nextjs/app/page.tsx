@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
-import { SiteMochiLandingSection } from "@/components/site-mochi-landing-section";
+import { CompanionSurface } from "@/components/companion/companion-surface";
 import { createPageMetadata } from "@/lib/metadata";
+import "./companion/companion.css";
 
 export const metadata: Metadata = createPageMetadata({
-  title: "Mochi | Home",
-  description:
-    "Pick a browser creature, arm its personality, and let Mochi loose.",
+  title: "Compañera | Mochi",
+  description: "Una pieza para hablar con Mochi. Ella está en el centro.",
   path: "/",
 });
 
 export default function Home() {
   return (
-    <main className="h-[100dvh] max-h-[100dvh] overflow-hidden">
-      <SiteMochiLandingSection />
-    </main>
+    <div className="companion-root" data-companion-surface>
+      <CompanionSurface />
+    </div>
   );
 }

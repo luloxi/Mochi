@@ -12,6 +12,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async redirects() {
+    return [{ source: "/companion", destination: "/", permanent: true }];
+  },
   webpack: (config) => {
     config.resolve = config.resolve || {}
     config.resolve.alias = {

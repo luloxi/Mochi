@@ -2311,7 +2311,7 @@ function handleBubblePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     });
   }, [open, repositionBubbleNearMochi]);
 
-  if (!config.enabled || pathname !== "/") {
+  if (!config.enabled || pathname === "/" || pathname.startsWith("/companion")) {
     return null;
   }
 
