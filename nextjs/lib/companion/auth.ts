@@ -184,9 +184,9 @@ export async function readGoogleIdTokenEmail(
   }
 }
 
-/** Public GIS web client (Lumen). Origins must include the /companion share URL. */
+/** Public GIS web client (GCP mochi-507219). Origins: https://mochiagents.vercel.app and http://localhost:3000. */
 export const COMPANION_GOOGLE_CLIENT_ID =
-  "642702167525-avdsu91g38fhspaapmn9heiie72tpkh4.apps.googleusercontent.com";
+  "253648842852-crcqh36v7bogroqae76f4mchit37nl4i.apps.googleusercontent.com";
 
 export function googleClientId(): string {
   return (

@@ -376,7 +376,7 @@ describe("fullscreen companion surface", () => {
     assert.match(css, /100dvh/);
     const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
     assert.match(login, /accounts\.google\.com\/gsi\/client/);
-    assert.match(login, /642702167525-avdsu91g38fhspaapmn9heiie72tpkh4\.apps\.googleusercontent\.com/);
+    assert.match(login, /253648842852-crcqh36v7bogroqae76f4mchit37nl4i\.apps\.googleusercontent\.com/);
     assert.match(login, /Authorized JavaScript origin https:\/\/mochiagents\.vercel\.app/);
   });
 });

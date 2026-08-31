@@ -22,7 +22,7 @@ export function CompanionLogin({
   const [error, setError] = useState<string | null>(null);
   const clientId =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-    "642702167525-avdsu91g38fhspaapmn9heiie72tpkh4.apps.googleusercontent.com";
+    "253648842852-crcqh36v7bogroqae76f4mchit37nl4i.apps.googleusercontent.com";
 
   useEffect(() => {
     if (!clientId) return;
