@@ -851,7 +851,7 @@ export function CompanionApps({
     const openHouse = () => {
       setWins((prev) => openWindow(prev, "boards", APP_SEED.boards));
       setOrder((prev) => {
-        const next = prev.filter((row) => row !== "boards");
+        const next: RaAppId[] = prev.filter((row) => row !== "boards");
         next.push("boards");
         return next;
       });

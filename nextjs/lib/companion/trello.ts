@@ -186,8 +186,7 @@ export function insertPos(positions: number[], index: number): number {
   const i = Math.max(0, Math.min(Math.round(index), positions.length));
   const prev = i > 0 ? positions[i - 1] : null;
   const next = i < positions.length ? positions[i] : null;
-  if (prev == null && next == null) return 65535;
-  if (prev == null) return next / 2;
+  if (prev == null) return next == null ? 65535 : next / 2;
   if (next == null) return prev + 65535;
   if (prev === next) return prev;
   return (prev + next) / 2;
