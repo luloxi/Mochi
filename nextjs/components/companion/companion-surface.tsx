@@ -52,7 +52,8 @@ type TalkMsg = { id: string; from: "me" | "them"; content: string };
 type OpenChat = "human" | "nimbo" | "help" | null;
 
 const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], members: [], configured: false };
-const TALK_SEED: LiveWindow = { id: "talk", x: 72, y: 56, w: 280, h: 360, z: 55 };
+/** Chat sits ABOVE the pets (pet overlay is z 160). Pets stay above dock and board. */
+const TALK_SEED: LiveWindow = { id: "talk", x: 72, y: 56, w: 320, h: 380, z: 420 };
 
 function PresenceFace({
   face,
@@ -126,6 +127,9 @@ export function CompanionSurface() {
   });
   const lastTogetherAt = useRef<number | null>(null);
   const [privateChat, setPrivateChat] = useState<PrivateMsg[]>([]);
+  const [otherTyping, setOtherTyping] = useState(false);
+  const typingSentAt = useRef(0);
+  const logRef = useRef<HTMLDivElement | null>(null);
   const [nimboLines, setNimboLines] = useState<string[]>([]);
   const [nimboLog, setNimboLog] = useState<TalkMsg[]>([]);
   const [helpLog, setHelpLog] = useState<TalkMsg[]>([]);
@@ -179,6 +183,10 @@ export function CompanionSurface() {
         if (cancelled || !json) return;
         if (Array.isArray(json.dms)) setPrivateChat(json.dms);
         if (json.presence) setPairPresence(json.presence);
+        if (json.typing) {
+          const them = seat === "katho" ? "lulox" : "katho";
+          setOtherTyping(json.typing[them] === true);
+        }
       } catch {
         // keep last snapshot
       }
@@ -430,6 +438,27 @@ export function CompanionSurface() {
         ].slice(-20),
       );
     }
+  }
+
+  /** El chat siempre queda scrolleado a lo último. */
+  useEffect(() => {
+    const log = logRef.current;
+    if (!log) return;
+    log.scrollTop = log.scrollHeight;
+  }, [openChat, privateChat, nimboLines, helpLog, otherTyping]);
+
+  /** Avisá al otro que estás escribiendo (globito de puntos). */
+  function pingTyping() {
+    if (!seat) return;
+    const now = Date.now();
+    if (now - typingSentAt.current < 2000) return;
+    typingSentAt.current = now;
+    void fetch("/api/companion/sync", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "typing" }),
+    }).catch(() => {});
   }
 
   function handleSend(kind: OpenChat) {
@@ -688,7 +717,7 @@ export function CompanionSurface() {
           onResize={(next) => setTalkPos((prev) => resizeWindow([prev], prev.id, next)[0] || { ...prev, ...next })}
         >
           <div className="talk-body">
-            <div className="talk-log">
+            <div className="talk-log" ref={logRef} data-talk-log>
               {pairLog.length === 0 ? (
                 <p className="talk-empty">…</p>
               ) : (
@@ -698,6 +727,13 @@ export function CompanionSurface() {
                   </p>
                 ))
               )}
+              {otherTyping ? (
+                <p className="talk-line from-them talk-typing" data-talk-typing aria-label="escribiendo">
+                  <span className="talk-dot" />
+                  <span className="talk-dot" />
+                  <span className="talk-dot" />
+                </p>
+              ) : null}
             </div>
             <form
               className="talk-composer"
@@ -708,10 +744,15 @@ export function CompanionSurface() {
             >
               <input
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  pingTyping();
+                }}
                 placeholder="…"
                 aria-label={`Mensaje para ${otherTint.label}`}
                 autoComplete="off"
+                autoFocus
+                data-talk-input
               />
               <button type="submit" disabled={!draft.trim()}>
                 ok
@@ -738,7 +779,7 @@ export function CompanionSurface() {
           }
         >
           <div className="talk-body">
-            <div className="talk-log">
+            <div className="talk-log" ref={logRef} data-talk-log>
               {nimboLog.length === 0 ? (
                 <p className="talk-empty">{board.configured ? "Ra." : RA_MISSING_LINE}</p>
               ) : (
@@ -762,6 +803,8 @@ export function CompanionSurface() {
                 placeholder="…"
                 aria-label="Mensaje para Nimbo"
                 autoComplete="off"
+                autoFocus
+                data-talk-input
               />
               <button type="submit" disabled={!draft.trim()}>
                 ok
@@ -786,7 +829,7 @@ export function CompanionSurface() {
           onResize={(next) => setTalkPos((prev) => ({ ...prev, ...next }))}
         >
           <div className="talk-body">
-            <div className="talk-log">
+            <div className="talk-log" ref={logRef} data-talk-log>
               {helpLog.length === 0 ? (
                 <p className="talk-empty">{localHelpReply("hola", seat)}</p>
               ) : (
@@ -810,6 +853,8 @@ export function CompanionSurface() {
                 placeholder="…"
                 aria-label="Pregunta de ayuda"
                 autoComplete="off"
+                autoFocus
+                data-talk-input
               />
               <button type="submit" disabled={!draft.trim()}>
                 ok

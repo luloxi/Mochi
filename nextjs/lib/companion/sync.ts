@@ -22,13 +22,22 @@ export type CompanionSyncState = {
     katho: PresenceHeartbeat | null;
     lulox: PresenceHeartbeat | null;
   };
+  /** Last keystroke per seat. Fresh = the other side sees the WhatsApp dots. */
+  typing?: {
+    katho: number | null;
+    lulox: number | null;
+  };
   boards: Board[];
 };
+
+/** A keystroke counts as "escribiendo" for this long. */
+export const TYPING_FRESH_MS = 6000;
 
 export function emptySyncState(): CompanionSyncState {
   return {
     dms: [],
     presence: { katho: null, lulox: null },
+    typing: { katho: null, lulox: null },
     boards: [sampleSuenosBoard()],
   };
 }
@@ -40,6 +49,8 @@ export type CompanionSyncStore = {
   loadDms(): PrivateMsg[];
   heartbeat(person: PersonId, status: PresenceStatus, now: number): void;
   loadPresence(now: number, idleMs?: number): { katho: PresenceStatus; lulox: PresenceStatus };
+  markTyping(person: PersonId, now: number): void;
+  loadTyping(now: number, freshMs?: number): { katho: boolean; lulox: boolean };
   loadBoards(): Board[];
   saveBoards(boards: Board[]): void;
 };
@@ -79,6 +90,16 @@ export function createMemorySyncStore(initial?: CompanionSyncState): CompanionSy
         lulox: statusFromHeartbeat(state.presence.lulox, now, idleMs),
       };
     },
+    markTyping(person, now) {
+      const typing = state.typing || { katho: null, lulox: null };
+      state = { ...state, typing: { ...typing, [person]: now } };
+    },
+    loadTyping(now, freshMs = TYPING_FRESH_MS) {
+      const typing = state.typing || { katho: null, lulox: null };
+      const fresh = (at: number | null | undefined) =>
+        typeof at === "number" && now - at >= 0 && now - at < freshMs;
+      return { katho: fresh(typing.katho), lulox: fresh(typing.lulox) };
+    },
     loadBoards() {
       return structuredClone(state.boards);
     },
@@ -108,6 +129,11 @@ export function createFileSyncStore(filePath: string): CompanionSyncStore {
       persist();
     },
     loadPresence: (now, idleMs) => memory.loadPresence(now, idleMs),
+    markTyping(person, now) {
+      memory.markTyping(person, now);
+      persist();
+    },
+    loadTyping: (now, freshMs) => memory.loadTyping(now, freshMs),
     loadBoards: () => memory.loadBoards(),
     saveBoards(boards) {
       memory.saveBoards(boards);
@@ -170,6 +196,13 @@ export function companionSyncApi(store: CompanionSyncStore) {
     loadPresence(now = Date.now(), idleMs?: number) {
       return store.loadPresence(now, idleMs);
     },
+    markTyping(person: PersonId, now = Date.now()) {
+      store.markTyping(person, now);
+      return store.loadTyping(now);
+    },
+    loadTyping(now = Date.now(), freshMs?: number) {
+      return store.loadTyping(now, freshMs);
+    },
     loadBoards() {
       return store.loadBoards();
     },
@@ -181,6 +214,7 @@ export function companionSyncApi(store: CompanionSyncStore) {
       return {
         dms: store.loadDms(),
         presence: store.loadPresence(now),
+        typing: store.loadTyping(now),
         boards: store.loadBoards(),
       };
     },
@@ -215,6 +249,10 @@ export function handleCompanionSyncRequest(args: {
     const ok: PresenceStatus[] = ["present", "logout", "close", "idle-away"];
     const next = ok.includes(status as PresenceStatus) ? (status as PresenceStatus) : "present";
     api.heartbeat(args.session.personId, next, now);
+    return { status: 200, body: api.snapshot(now) };
+  }
+  if (type === "typing") {
+    api.markTyping(args.session.personId, now);
     return { status: 200, body: api.snapshot(now) };
   }
   if (type === "boards") {

@@ -52,6 +52,7 @@ import {
   companionSyncApi,
   createMemorySyncStore,
   handleCompanionSyncRequest,
+  TYPING_FRESH_MS,
 } from "./sync";
 import {
   TOGETHER_ACTIONS,
@@ -1280,5 +1281,53 @@ describe("house card details", () => {
     assert.equal(archived.body.did, "archive");
     assert.ok(urls.every((url) => !url.includes("ENV_SECRET")));
     assert.ok(urls.some((url) => url.includes(`token=${userToken}`)));
+  });
+});
+
+describe("chat sits above the pets and behaves", () => {
+  it("talk window outranks the pet overlay on desktop and phone", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    const overlay = /\.companion-overlay\s*\{[^}]*z-index:\s*(\d+)/.exec(css);
+    const talk = /\.talk-window\s*\{[^}]*z-index:\s*(\d+)/.exec(css);
+    assert.ok(overlay && talk);
+    assert.ok(Number(talk![1]) > Number(overlay![1]));
+    const phone = /@media \(max-width: 699px\)[\s\S]*?\.talk-window[\s\S]*?z-index:\s*(\d+)/.exec(css);
+    assert.ok(phone && Number(phone[1]) > Number(overlay![1]));
+    const seed = /TALK_SEED[^;]*z:\s*(\d+)/.exec(surface);
+    assert.ok(seed && Number(seed[1]) > Number(overlay![1]));
+  });
+
+  it("composer autofocuses, log scrolls to the last line, and fills the window", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    assert.match(surface, /data-talk-input/);
+    assert.match(surface, /autoFocus/);
+    assert.match(surface, /log\.scrollTop = log\.scrollHeight/);
+    assert.match(css, /\.talk-log\s*\{[^}]*flex:\s*1 1 auto/);
+    assert.doesNotMatch(css, /\.talk-log\s*\{[^}]*max-height:\s*18vh/);
+  });
+
+  it("a fresh keystroke from the other seat is what lights the dots", () => {
+    const store = createMemorySyncStore();
+    const now = 1_000_000;
+    const typed = handleCompanionSyncRequest({
+      store,
+      session: createCompanionSession(KATHO_GOOGLE_EMAIL, now)!,
+      method: "POST",
+      body: { type: "typing" },
+      now,
+    });
+    assert.equal(typed.status, 200);
+    assert.deepEqual((typed.body as { typing: unknown }).typing, { katho: true, lulox: false });
+    const later = handleCompanionSyncRequest({
+      store,
+      session: createCompanionSession(LULOX_GOOGLE_EMAIL, now)!,
+      method: "GET",
+      now: now + TYPING_FRESH_MS + 1,
+    });
+    assert.deepEqual((later.body as { typing: unknown }).typing, { katho: false, lulox: false });
   });
 });

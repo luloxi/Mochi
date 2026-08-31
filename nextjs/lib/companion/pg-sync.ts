@@ -71,6 +71,10 @@ export function wrapStoreWithPostgres(base: CompanionSyncStore): CompanionSyncSt
       persist();
     },
     loadPresence: (now, idleMs) => base.loadPresence(now, idleMs),
+    markTyping(person, now) {
+      base.markTyping(person, now);
+    },
+    loadTyping: (now, freshMs) => base.loadTyping(now, freshMs),
     loadBoards: () => base.loadBoards(),
     saveBoards(boards) {
       base.saveBoards(boards);
