@@ -7,9 +7,14 @@ import {
   COMPANION_SOUL,
   PEOPLE,
   PERSONAS,
+  applyNimboClock,
+  dueLine,
+  emptyPomo,
   localMochiReply,
   nextMascotAlert,
   parseCompanionIntent,
+  startPomodoro,
+  tickCompanionDue,
 } from "./companion-core";
 import {
   COMPANION_GOOGLE_CLIENT_ID,
@@ -51,6 +56,7 @@ import {
 import { boardLegendLine } from "./boards";
 import { NIMBO_NAME, NIMBO_SOUL, extractLlmText, localNimboReply, pickLlmProvider } from "./llm";
 import {
+  RA_MISSING_LINE,
   applyRaIntent,
   parseRaIntent,
   trelloConfigured,
@@ -142,6 +148,22 @@ describe("three chats + nimbo Ra intents", () => {
     const done = parseRaIntent("listo comprar pan");
     assert.equal(done.type, "done");
     assert.equal(parseAppAgentIntent("qué hay en ra").type, "list");
+  });
+
+  it("nimbo also starts and stops the tomato", () => {
+    const start = parseNimboIntent("arrancá el tomate");
+    assert.equal(start.type, "pomodoro");
+    if (start.type === "pomodoro") assert.equal(start.action, "start");
+    const mins = parseNimboIntent("pomodoro 15 minutos");
+    assert.equal(mins.type, "pomodoro");
+    if (mins.type === "pomodoro") assert.equal(mins.minutes, 15);
+    const stop = parseNimboIntent("pará el tomate");
+    assert.equal(stop.type, "pomodoro");
+    if (stop.type === "pomodoro") assert.equal(stop.action, "stop");
+    const clock = applyNimboClock("start", 10, 1_000);
+    assert.equal(clock.running, true);
+    assert.equal(clock.duration, 600);
+    assert.equal(applyNimboClock("stop").running, false);
   });
 });
 
@@ -284,13 +306,18 @@ describe("copy + llm + trello", () => {
     assert.match(xai.url || "", /api\.x\.ai/);
     assert.doesNotMatch(xai.url || "", /grok\.com/);
     assert.equal(extractLlmText({ choices: [{ message: { content: " Dale. " } }] }), "Dale.");
-    assert.match(localNimboReply("hola"), /Hola|Ra/i);
+    assert.equal(localNimboReply("hola"), "Hola. Ra no está.");
+    assert.equal(localNimboReply("hola", "Hacer: pan"), "Hola. Ra está acá.");
+    assert.equal(localNimboReply("arrancá el tomate", RA_MISSING_LINE), "Arranqué el tomate.");
   });
 
   it("Trello Ra add/move/done against a fake board", async () => {
     assert.equal(trelloConfigured({}), false);
     const none = await applyRaIntent({ type: "add", title: "pan" }, {});
     assert.equal(none.did, "need-trello");
+    assert.equal(none.line, `${RA_MISSING_LINE} Te lo anoté en la lista.`);
+    const missingChat = await applyRaIntent({ type: "chat" }, {});
+    assert.equal(missingChat.line, RA_MISSING_LINE);
 
     const lists = [
       { id: "l1", name: "Hacer", pos: 1 },
@@ -350,6 +377,41 @@ describe("fullscreen companion surface", () => {
     const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
     assert.match(login, /accounts\.google\.com\/gsi\/client/);
     assert.match(login, /642702167525-avdsu91g38fhspaapmn9heiie72tpkh4\.apps\.googleusercontent\.com/);
+    assert.match(login, /Authorized JavaScript origin https:\/\/mochiagents\.vercel\.app/);
+  });
+});
+
+describe("in-browser due cron", () => {
+  it("startCompanionRuntime is a tab setInterval, not a server worker", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const core = readFileSync(join(here, "companion-core.ts"), "utf8");
+    assert.match(core, /export function startCompanionRuntime/);
+    assert.match(core, /runtimeTicker = window\.setInterval/);
+    assert.match(core, /tickCompanionDue/);
+    assert.doesNotMatch(core, /new Worker/);
+  });
+
+  it("tickCompanionDue fires ended tomato and due Ra cards once", () => {
+    const pomo = startPomodoro(emptyPomo(), 1, 1_000);
+    const dueAt = new Date(5_000).toISOString();
+    const first = tickCompanionDue({
+      now: 61_000,
+      pomo,
+      raCards: [{ id: "c1", name: "pan", due: dueAt, dueComplete: false }],
+      firedIds: [],
+    });
+    assert.equal(first.pomo.running, false);
+    assert.equal(first.fires.length, 2);
+    assert.ok(first.fires.some((fire) => fire.kind === "pomodoro"));
+    assert.ok(first.fires.some((fire) => fire.kind === "ra" && fire.title === "pan"));
+    assert.equal(dueLine({ kind: "pomodoro", id: "x", title: "tomate", at: 1 }), "Se acabó el tomate.");
+    const again = tickCompanionDue({
+      now: 62_000,
+      pomo: first.pomo,
+      raCards: [{ id: "c1", name: "pan", due: dueAt, dueComplete: false }],
+      firedIds: first.firedIds,
+    });
+    assert.equal(again.fires.length, 0);
   });
 });
 
@@ -373,6 +435,12 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.doesNotMatch(login, /Entrá con Google\. Así sabemos/);
     assert.match(surface, /data-companion-desk/);
     assert.match(css, /--c-ink:\s*#140c18/);
+    assert.match(surface, /startCompanionRuntime/);
+    assert.match(surface, /RA_MISSING_LINE/);
+    assert.match(surface, /nimboWorking/);
+    assert.doesNotMatch(surface, /<iframe/i);
+    assert.doesNotMatch(surface, /trello\.com\/b/);
+    assert.doesNotMatch(surface, /data-ra-board/);
   });
 
   it("bubbles sit above mascot heads, not a giant form", () => {

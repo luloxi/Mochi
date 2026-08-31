@@ -84,6 +84,7 @@ export function CompanionLogin({
       <p className="companion-login-hi">Hola.</p>
       <p className="companion-login-line">Katho ella. Lulox él. Los dos.</p>
       {clientId ? <div ref={btnRef} className="companion-google-btn" /> : null}
+      <p className="companion-login-hint">Authorized JavaScript origin https://mochiagents.vercel.app</p>
       {error ? <p className="companion-login-error">{error}</p> : null}
     </div>
   );

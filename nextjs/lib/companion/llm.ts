@@ -19,10 +19,12 @@ export const NIMBO_NAME = "Nimbo";
 export const NIMBO_SOUL = `Sos Nimbo, el bicho oro y gris de las tareas.
 Hablás en español rioplatense (vos, che, dale). Corto. Pocas palabras.
 Katho es ella. Lulox es él. Juntos son Katho y Lulox, los dos.
-No uses lenguaje inclusivo.
-El tablero es Ra. Podés listar, agregar, mover y marcar listo.
-No mandes a nadie a otro sitio. No digas que sos Grok ni Chano.
-Si no hay tablero, igual contestá con onda y pedí el paso.`;
+No uses lenguaje inclusivo. Nada de esas formas raras.
+Solo hacés tres cosas: el tablero Ra (listar, agregar, mover, marcar listo),
+arrancar y parar el tomate, y anotar una tarea en la lista.
+Si Ra no está, igual contestá y decí "Ra no está."
+No mandes recados, no pongas videos, no mandes a nadie a otro sitio.
+No digas que sos Grok ni Chano.`;
 
 export function pickLlmProvider(env: Record<string, string | undefined> = process.env): LlmPick {
   const openai = String(env.OPENAI_API_KEY || "").trim();
@@ -111,23 +113,36 @@ export async function completeLlmChat(
   return { provider: pick.provider, text: extractLlmText(json) };
 }
 
-const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres)\b/i;
+const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
 
 export function localNimboReply(userText: string, boardLine?: string): string {
   const t = userText.toLowerCase();
+  const missing = !boardLine || boardLine.startsWith("Ra no está");
   if (INCLUSIVE.test(t)) return "Katho ella, Lulox él. Los dos.";
-  if (/\b(hola|holis|buenas)\b/.test(t)) return "Hola. Ra está acá.";
+  if (/\b(pomo|pomodoro|tomate)\b/.test(t)) {
+    if (/\b(pará|para el pomo|para el tomate|stop|pausá|pausa|cortá|frená)\b/.test(t)) {
+      return "Paré el tomate.";
+    }
+    return "Arranqué el tomate.";
+  }
+  if (/\b(hola|holis|buenas)\b/.test(t)) {
+    return missing ? "Hola. Ra no está." : "Hola. Ra está acá.";
+  }
   if (/\b(gracias|graciasche)\b/.test(t)) return "De nada.";
   if (/\b(qué hay|que hay|tareas|tablero|ra)\b/.test(t)) {
     return boardLine || "Ra. Decime y lo anoto.";
   }
-  if (/\b(agreg|sumá|suma|nueva)\b/.test(t)) return boardLine || "Anotado.";
+  if (/\b(agreg|sumá|suma|nueva|anot|recordame)\b/.test(t)) {
+    return boardLine || "Anotado.";
+  }
   if (/\b(listo|done|terminé|termine)\b/.test(t)) return boardLine || "Listo.";
   if (/\b(mové|move|pasa)\b/.test(t)) return boardLine || "Movido.";
   return boardLine || "Dale.";
 }
 
 export function nimboSystemMessages(boardLine?: string): LlmChatMessage[] {
-  const extra = boardLine ? `\nTablero Ra ahora:\n${boardLine}` : "\nSi no hay tablero, contestá igual.";
+  const extra = boardLine
+    ? `\nTablero Ra ahora:\n${boardLine}`
+    : "\nRa no está. Igual contestá. Solo Ra, tomate y la lista.";
   return [{ role: "system", content: `${NIMBO_SOUL}${extra}` }];
 }

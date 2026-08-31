@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COMPANION_SESSION_COOKIE, restoreCompanionSession } from "@/lib/companion/auth";
+import { isRaNimboIntent, parseNimboIntent } from "@/lib/companion/chats";
 import {
   completeLlmChat,
   localNimboReply,
@@ -7,7 +8,7 @@ import {
   pickLlmProvider,
   type LlmChatMessage,
 } from "@/lib/companion/llm";
-import { applyRaIntent, parseRaIntent } from "@/lib/companion/trello";
+import { applyRaIntent, boardLine, emptyRaBoard, loadRaBoard, trelloConfigured } from "@/lib/companion/trello";
 
 export const runtime = "nodejs";
 
@@ -23,22 +24,35 @@ export async function POST(request: NextRequest) {
   const text = typeof json?.text === "string" ? json.text.trim() : "";
   if (!text) return NextResponse.json({ error: "EMPTY" }, { status: 400 });
 
-  const intent = parseRaIntent(text);
-  const applied = await applyRaIntent(intent).catch(() => null);
-  const board = applied?.board ?? null;
-  const line = applied?.line ?? "";
-  const did = applied?.did ?? "chat";
+  const intent = parseNimboIntent(text);
+  let board = emptyRaBoard();
+  let line = boardLine(board);
+  let did: string = intent.type === "chat" ? "chat" : intent.type;
+
+  if (isRaNimboIntent(intent) && (intent.type !== "chat" || trelloConfigured())) {
+    const applied = await applyRaIntent(intent).catch(() => null);
+    if (applied) {
+      board = applied.board;
+      line = applied.line;
+      did = applied.did;
+    }
+  } else if (trelloConfigured()) {
+    board = await loadRaBoard().catch(() => emptyRaBoard());
+    if (board.configured) line = boardLine(board);
+  }
 
   let reply = localNimboReply(text, line);
   const pick = pickLlmProvider();
-  if (pick.provider !== "none") {
+  if (intent.type === "chat" && pick.provider !== "none") {
     const history = Array.isArray(json?.history)
-      ? (json.history as LlmChatMessage[]).filter(
-          (row) =>
-            row &&
-            (row.role === "user" || row.role === "assistant") &&
-            typeof row.content === "string",
-        ).slice(-8)
+      ? (json.history as LlmChatMessage[])
+          .filter(
+            (row) =>
+              row &&
+              (row.role === "user" || row.role === "assistant") &&
+              typeof row.content === "string",
+          )
+          .slice(-8)
       : [];
     const llm = await completeLlmChat([
       ...nimboSystemMessages(line),
@@ -52,6 +66,7 @@ export async function POST(request: NextRequest) {
     reply,
     board,
     did,
+    intent,
     provider: pick.provider,
   });
 }

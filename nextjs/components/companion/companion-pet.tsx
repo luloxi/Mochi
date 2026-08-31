@@ -266,6 +266,7 @@ export function CompanionPair({
   view,
   mochiWorking,
   luloxWorking,
+  nimboWorking = false,
   mochiAlert,
   luloxAlert,
   mochiBubble,
@@ -279,6 +280,7 @@ export function CompanionPair({
   view: PresenceView;
   mochiWorking: boolean;
   luloxWorking: boolean;
+  nimboWorking?: boolean;
   mochiAlert: string | null;
   luloxAlert: string | null;
   mochiBubble?: string | null;
@@ -323,14 +325,14 @@ export function CompanionPair({
         togetherAction={view.action}
       />
       <CompanionWanderer
-        working={false}
+        working={nimboWorking}
         perch={null}
         scale={scale * 0.88}
         pack="nimbo"
         label="Nimbo"
         onClick={onNimboClick}
         bias={{ ...zones.nimbo, pose: "idle" }}
-        extraClass="is-nimbo"
+        extraClass={`is-nimbo${nimboWorking ? " is-play" : ""}`}
         bubble={nimboBubble ?? "dale"}
       />
       <CompanionWanderer

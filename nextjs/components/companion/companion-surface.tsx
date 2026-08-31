@@ -3,9 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CompanionPair } from "@/components/companion/companion-pet";
 import { CompanionLogin } from "@/components/companion/companion-login";
-import { nextMascotAlert, otherPerson, uid, type PrivateMsg } from "@/lib/companion/companion-core";
+import {
+  COMPANION_DUE_EVENT,
+  addTodoItem,
+  applyNimboClock,
+  dueLine,
+  loadPomo,
+  nextMascotAlert,
+  otherPerson,
+  saveRaSnapshot,
+  startCompanionRuntime,
+  uid,
+  type DueFire,
+  type PrivateMsg,
+} from "@/lib/companion/companion-core";
 import { type CompanionAuthSession } from "@/lib/companion/auth";
-import { CHAT_WINDOWS } from "@/lib/companion/chats";
+import { CHAT_WINDOWS, parseNimboIntent } from "@/lib/companion/chats";
+import { RA_MISSING_LINE, type RaBoard } from "@/lib/companion/trello";
 import {
   DEFAULT_TOGETHER_CHANCE,
   DEFAULT_TOGETHER_COOLDOWN_MS,
@@ -15,7 +29,6 @@ import {
   type PresenceView,
 } from "@/lib/companion/presence";
 import { bubbleAboveHead } from "@/lib/companion/desk";
-import { cardsInList, type RaBoard, type RaCard, type RaList } from "@/lib/companion/trello";
 
 type TalkMsg = { id: string; from: "me" | "them"; content: string };
 type OpenChat = "human" | "nimbo" | null;
@@ -44,7 +57,23 @@ export function CompanionSurface() {
   const [nimboLog, setNimboLog] = useState<TalkMsg[]>([]);
   const [board, setBoard] = useState<RaBoard>(EMPTY_BOARD);
   const [mascotAlert, setMascotAlert] = useState<string | null>(null);
+  const [pomoOn, setPomoOn] = useState(false);
   const seenDmRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    startCompanionRuntime();
+    setPomoOn(loadPomo().running);
+    const onDue = (event: Event) => {
+      const fire = (event as CustomEvent<DueFire>).detail;
+      if (!fire?.kind) return;
+      if (fire.kind === "pomodoro") setPomoOn(false);
+      const line = dueLine(fire);
+      setNimboLines((prev) => [...prev, line].slice(-12));
+      setNimboLog((prev) => [...prev, { id: uid("due"), from: "them" as const, content: line }].slice(-20));
+    };
+    window.addEventListener(COMPANION_DUE_EVENT, onDue);
+    return () => window.removeEventListener(COMPANION_DUE_EVENT, onDue);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +117,17 @@ export function CompanionSurface() {
     try {
       const res = await fetch("/api/companion/trello", { credentials: "include" });
       const json = await res.json().catch(() => null);
-      if (json?.board) setBoard({ ...EMPTY_BOARD, ...json.board, configured: json.configured !== false });
+      if (!json) return;
+      const next: RaBoard = {
+        ...EMPTY_BOARD,
+        ...(json.board || {}),
+        configured: json.configured === true || json.board?.configured === true,
+      };
+      setBoard(next);
+      saveRaSnapshot(next.cards || []);
+      if (!next.configured) {
+        setNimboLines((prev) => (prev.length ? prev : [RA_MISSING_LINE]));
+      }
     } catch {
       // keep last
     }
@@ -198,6 +237,12 @@ export function CompanionSurface() {
   }
 
   async function sendNimbo(text: string) {
+    const intent = parseNimboIntent(text);
+    if (intent.type === "pomodoro") {
+      applyNimboClock(intent.action, intent.minutes);
+      setPomoOn(intent.action === "start");
+    }
+    if (intent.type === "todo") addTodoItem(intent.text);
     const history = nimboLog.map((row) => ({
       role: row.from === "me" ? ("user" as const) : ("assistant" as const),
       content: row.content,
@@ -211,6 +256,7 @@ export function CompanionSurface() {
       });
       const json = await res.json().catch(() => null);
       const reply = typeof json?.reply === "string" && json.reply.trim() ? json.reply.trim() : "Dale.";
+      if (json?.did === "need-trello" && intent.type === "add") addTodoItem(intent.title);
       setNimboLines((prev) => [...prev, reply].slice(-12));
       setNimboLog((prev) =>
         [
@@ -219,10 +265,14 @@ export function CompanionSurface() {
           { id: uid("them"), from: "them" as const, content: reply },
         ].slice(-20),
       );
-      if (json?.board) setBoard({ ...EMPTY_BOARD, ...json.board });
-      else void pullBoard();
+      if (json?.board) {
+        const next = { ...EMPTY_BOARD, ...json.board };
+        setBoard(next);
+        saveRaSnapshot(next.cards || []);
+      } else void pullBoard();
     } catch {
-      const reply = "Después.";
+      if (intent.type === "add") addTodoItem(intent.title);
+      const reply = intent.type === "pomodoro" || intent.type === "todo" || intent.type === "add" ? "Dale." : "Después.";
       setNimboLines((prev) => [...prev, reply].slice(-12));
       setNimboLog((prev) =>
         [
@@ -244,21 +294,6 @@ export function CompanionSurface() {
     }
     if (!seat) return;
     sendDm(text);
-  }
-
-  async function trelloAction(body: Record<string, string>) {
-    try {
-      const res = await fetch("/api/companion/trello", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => null);
-      if (json?.board) setBoard({ ...EMPTY_BOARD, ...json.board, configured: json.configured !== false });
-    } catch {
-      // keep last
-    }
   }
 
   const mochiBubble = bubbleAboveHead({ character: "mochi", dms: privateChat });
@@ -289,6 +324,7 @@ export function CompanionSurface() {
         view={togetherView}
         mochiWorking={false}
         luloxWorking={false}
+        nimboWorking={openChat === "nimbo" || pomoOn}
         mochiAlert={seat === "lulox" ? mascotAlert : null}
         luloxAlert={seat === "katho" ? mascotAlert : null}
         mochiBubble={mochiBubble}
@@ -303,6 +339,12 @@ export function CompanionSurface() {
       {leave ? (
         <p className="leave-signal" data-leave-signal>
           {leave}
+        </p>
+      ) : null}
+
+      {auth && !board.configured ? (
+        <p className="ra-status" data-ra-status>
+          {RA_MISSING_LINE}
         </p>
       ) : null}
 
@@ -381,29 +423,12 @@ export function CompanionSurface() {
           <div className="talk-body">
             <div className="talk-log">
               {nimboLog.length === 0 ? (
-                <p className="talk-empty">Ra.</p>
+                <p className="talk-empty">{board.configured ? "Ra." : RA_MISSING_LINE}</p>
               ) : (
                 nimboLog.map((row) => (
                   <p key={row.id} className={`talk-line from-${row.from}`}>
                     {row.content}
                   </p>
-                ))
-              )}
-            </div>
-            <div className="board-mini" data-ra-board>
-              {board.lists.length === 0 ? (
-                <p className="talk-empty">{board.configured ? "—" : "Ra todavía no."}</p>
-              ) : (
-                board.lists.map((col) => (
-                  <RaColumn
-                    key={col.id}
-                    col={col}
-                    cards={cardsInList(board, col.id)}
-                    lists={board.lists}
-                    onAdd={(title) => void trelloAction({ action: "add", title, listId: col.id })}
-                    onMove={(cardId, listId) => void trelloAction({ action: "move", cardId, listId })}
-                    onDone={(cardId) => void trelloAction({ action: "done", cardId })}
-                  />
                 ))
               )}
             </div>
@@ -428,63 +453,6 @@ export function CompanionSurface() {
           </div>
         </section>
       ) : null}
-    </div>
-  );
-}
-
-function RaColumn({
-  col,
-  cards,
-  lists,
-  onAdd,
-  onMove,
-  onDone,
-}: {
-  col: RaList;
-  cards: RaCard[];
-  lists: RaList[];
-  onAdd: (title: string) => void;
-  onMove: (cardId: string, listId: string) => void;
-  onDone: (cardId: string) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  return (
-    <div className="board-column">
-      <span className="board-col-title">{col.name}</span>
-      {cards.map((card) => (
-        <div key={card.id} className="board-feel board-feel-gold">
-          <span>{card.name}</span>
-          <span className="board-card-ops">
-            {lists
-              .filter((list) => list.id !== col.id)
-              .slice(0, 3)
-              .map((list) => (
-                <button
-                  key={list.id}
-                  type="button"
-                  className="board-mini-btn"
-                  onClick={() => onMove(card.id, list.id)}
-                >
-                  {list.name.slice(0, 8)}
-                </button>
-              ))}
-            <button type="button" className="board-mini-btn" onClick={() => onDone(card.id)}>
-              listo
-            </button>
-          </span>
-        </div>
-      ))}
-      <form
-        className="board-add"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!draft.trim()) return;
-          onAdd(draft.trim());
-          setDraft("");
-        }}
-      >
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="+" aria-label="Nueva tarea" />
-      </form>
     </div>
   );
 }

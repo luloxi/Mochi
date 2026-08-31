@@ -123,11 +123,37 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   color: var(--c-ink);
 }
 
+.companion-login-hint {
+  margin: 10px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #5c564e;
+  word-break: break-all;
+}
+
 .companion-login-error {
   color: #9b123c;
   font-size: 13px;
   font-weight: 800;
   margin: 8px 0 0;
+}
+
+.ra-status {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--c-ink);
+  background: var(--c-gold);
+  color: var(--c-ink);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .companion-google-btn {

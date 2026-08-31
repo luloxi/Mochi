@@ -72,7 +72,35 @@ export const COMPANION_STORAGE = {
   video: "mochi-companion-video-v1",
   agents: "mochi-companion-agents-v1",
   openApps: "mochi-companion-open-apps-v1",
+  pomo: "mochi-companion-pomo-v1",
+  dueFired: "mochi-companion-due-fired-v1",
+  raSnapshot: "mochi-companion-ra-v1",
 } as const;
+
+export const DEFAULT_POMO_MINUTES = 25;
+export const COMPANION_DUE_EVENT = "mochi-companion-due";
+export const COMPANION_POMO_EVENT = "mochi-companion-pomo";
+
+export type PomoClock = {
+  running: boolean;
+  remaining: number;
+  duration: number;
+  endsAt: number | null;
+};
+
+export type RaDueCard = {
+  id: string;
+  name: string;
+  due: string | null;
+  dueComplete?: boolean;
+};
+
+export type DueFire = {
+  kind: "pomodoro" | "ra";
+  id: string;
+  title: string;
+  at: number;
+};
 
 export const PEOPLE: Record<
   PersonId,
@@ -190,6 +218,145 @@ export function saveTodos(rows: TodoItem[]) {
   writeJson(COMPANION_STORAGE.todos, rows.slice(-60));
 }
 
+export function addTodoItem(text: string, rows: TodoItem[] = loadTodos()): TodoItem[] {
+  const trimmed = text.trim();
+  if (!trimmed) return rows;
+  const next = [
+    ...rows,
+    { id: uid("todo"), text: trimmed, done: false, createdAt: nowIso() },
+  ].slice(-60);
+  saveTodos(next);
+  return next;
+}
+
+export function emptyPomo(): PomoClock {
+  return { running: false, remaining: 0, duration: DEFAULT_POMO_MINUTES * 60, endsAt: null };
+}
+
+export function loadPomo(): PomoClock {
+  const raw = readJson<Partial<PomoClock> | null>(COMPANION_STORAGE.pomo, null);
+  if (!raw || typeof raw !== "object") return emptyPomo();
+  return {
+    running: !!raw.running,
+    remaining: typeof raw.remaining === "number" && Number.isFinite(raw.remaining) ? Math.max(0, raw.remaining) : 0,
+    duration:
+      typeof raw.duration === "number" && Number.isFinite(raw.duration) && raw.duration > 0
+        ? raw.duration
+        : DEFAULT_POMO_MINUTES * 60,
+    endsAt: typeof raw.endsAt === "number" && Number.isFinite(raw.endsAt) ? raw.endsAt : null,
+  };
+}
+
+export function savePomo(clock: PomoClock) {
+  writeJson(COMPANION_STORAGE.pomo, clock);
+}
+
+export function startPomodoro(clock: PomoClock, minutes?: number, now = Date.now()): PomoClock {
+  const mins =
+    typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0
+      ? Math.min(90, Math.round(minutes))
+      : DEFAULT_POMO_MINUTES;
+  const duration = mins * 60;
+  return {
+    running: true,
+    remaining: duration,
+    duration,
+    endsAt: now + duration * 1000,
+  };
+}
+
+export function stopPomodoro(_clock: PomoClock = emptyPomo()): PomoClock {
+  return emptyPomo();
+}
+
+/** Start/stop the tomato from Nimbo without the UI saying "Pomodoro". */
+export function applyNimboClock(action: "start" | "stop", minutes?: number, now = Date.now()): PomoClock {
+  const next = action === "start" ? startPomodoro(loadPomo(), minutes, now) : stopPomodoro();
+  savePomo(next);
+  return next;
+}
+
+export function loadFiredDueIds(): string[] {
+  const rows = readJson<string[]>(COMPANION_STORAGE.dueFired, []);
+  return Array.isArray(rows) ? rows.filter((id) => typeof id === "string").slice(-80) : [];
+}
+
+export function saveFiredDueIds(ids: string[]) {
+  writeJson(COMPANION_STORAGE.dueFired, ids.slice(-80));
+}
+
+export function loadRaSnapshot(): RaDueCard[] {
+  const rows = readJson<RaDueCard[]>(COMPANION_STORAGE.raSnapshot, []);
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter((row) => row && typeof row.id === "string")
+    .map((row) => ({
+      id: row.id,
+      name: typeof row.name === "string" ? row.name : "",
+      due: typeof row.due === "string" ? row.due : null,
+      dueComplete: !!row.dueComplete,
+    }));
+}
+
+export function saveRaSnapshot(cards: RaDueCard[]) {
+  writeJson(
+    COMPANION_STORAGE.raSnapshot,
+    cards.map((card) => ({
+      id: card.id,
+      name: card.name,
+      due: card.due,
+      dueComplete: !!card.dueComplete,
+    })),
+  );
+}
+
+export function dueRaCards(cards: RaDueCard[], now: number, firedIds: string[]): DueFire[] {
+  const fired = new Set(firedIds);
+  const fires: DueFire[] = [];
+  for (const card of cards) {
+    if (!card?.id || card.dueComplete || !card.due) continue;
+    const dueAt = Date.parse(card.due);
+    if (!Number.isFinite(dueAt) || dueAt > now) continue;
+    if (fired.has(card.id)) continue;
+    fires.push({ kind: "ra", id: card.id, title: card.name || "Ra", at: now });
+  }
+  return fires;
+}
+
+export function tickCompanionDue(args: {
+  now: number;
+  pomo: PomoClock;
+  raCards: RaDueCard[];
+  firedIds: string[];
+}): { pomo: PomoClock; fires: DueFire[]; firedIds: string[] } {
+  const fires: DueFire[] = [];
+  let pomo = args.pomo;
+  const firedIds = [...args.firedIds];
+  if (pomo.running && pomo.endsAt != null) {
+    const remaining = Math.max(0, Math.ceil((pomo.endsAt - args.now) / 1000));
+    pomo = { ...pomo, remaining };
+    if (remaining <= 0) {
+      const id = `pomo-${pomo.endsAt}`;
+      if (!firedIds.includes(id)) {
+        fires.push({ kind: "pomodoro", id, title: "tomate", at: args.now });
+        firedIds.push(id);
+      }
+      pomo = emptyPomo();
+    }
+  }
+  const raFires = dueRaCards(args.raCards, args.now, firedIds);
+  for (const fire of raFires) {
+    fires.push(fire);
+    firedIds.push(fire.id);
+  }
+  return { pomo, fires, firedIds: firedIds.slice(-80) };
+}
+
+export function dueLine(fire: DueFire): string {
+  if (fire.kind === "pomodoro") return "Se acabó el tomate.";
+  return `Se venció «${fire.title}».`;
+}
+
 export function loadVideoUrl(): string {
   const raw = readJson<string>(COMPANION_STORAGE.video, "");
   return typeof raw === "string" ? raw : "";
@@ -261,22 +428,38 @@ export function formatWorkClock(ticks: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-let agentTicker: number | null = null;
+let runtimeTicker: number | null = null;
 
+/** In-browser cron while the tab is open. No server worker. Fires pomodoro end + due Ra cards. */
 export function startCompanionRuntime() {
   if (typeof window === "undefined") return;
-  if (agentTicker != null) return;
-  agentTicker = window.setInterval(() => {
+  if (runtimeTicker != null) return;
+  runtimeTicker = window.setInterval(() => {
     const agents = loadAgents();
-    let changed = false;
-    const next = agents.map((row) => {
+    let agentsChanged = false;
+    const nextAgents = agents.map((row) => {
       if (!row.working) return row;
-      changed = true;
+      agentsChanged = true;
       return { ...row, ticks: row.ticks + 1 };
     });
-    if (changed) {
-      saveAgents(next);
+    if (agentsChanged) {
+      saveAgents(nextAgents);
       window.dispatchEvent(new Event("mochi-companion-agents"));
+    }
+
+    const due = tickCompanionDue({
+      now: Date.now(),
+      pomo: loadPomo(),
+      raCards: loadRaSnapshot(),
+      firedIds: loadFiredDueIds(),
+    });
+    savePomo(due.pomo);
+    saveFiredDueIds(due.firedIds);
+    if (due.fires.length) {
+      window.dispatchEvent(new Event(COMPANION_POMO_EVENT));
+    }
+    for (const fire of due.fires) {
+      window.dispatchEvent(new CustomEvent(COMPANION_DUE_EVENT, { detail: fire }));
     }
   }, 1000);
 }

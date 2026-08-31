@@ -3,13 +3,15 @@ import { COMPANION_SESSION_COOKIE, restoreCompanionSession } from "@/lib/compani
 import {
   addRaCard,
   applyRaIntent,
+  boardLine,
   doneRaCard,
+  emptyRaBoard,
   inboxList,
   loadRaBoard,
   matchList,
   moveRaCard,
+  parseRaIntent,
   trelloConfigured,
-  type RaIntent,
 } from "@/lib/companion/trello";
 
 export const runtime = "nodejs";
@@ -23,7 +25,8 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   const configured = trelloConfigured();
   if (!configured) {
-    return NextResponse.json({ configured: false, board: { lists: [], cards: [] } });
+    const board = emptyRaBoard();
+    return NextResponse.json({ configured: false, board, line: boardLine(board) });
   }
   try {
     const board = await loadRaBoard();
@@ -40,7 +43,15 @@ export async function POST(request: NextRequest) {
   const action = typeof json?.action === "string" ? json.action : "";
 
   if (!trelloConfigured()) {
-    return NextResponse.json({ configured: false, error: "TRELLO_UNCONFIGURED" }, { status: 503 });
+    const text =
+      typeof json?.text === "string" ? json.text : typeof json?.title === "string" ? json.title : "";
+    const applied = await applyRaIntent(parseRaIntent(text));
+    return NextResponse.json({
+      configured: false,
+      board: applied.board,
+      did: applied.did,
+      line: applied.line,
+    });
   }
 
   try {
@@ -75,9 +86,13 @@ export async function POST(request: NextRequest) {
     }
     if (action === "intent") {
       const text = typeof json?.text === "string" ? json.text : "";
-      const intent: RaIntent = { type: "chat" };
-      const applied = await applyRaIntent(text ? { type: "add", title: text } : intent);
-      return NextResponse.json({ configured: true, board: applied.board, did: applied.did, line: applied.line });
+      const applied = await applyRaIntent(parseRaIntent(text));
+      return NextResponse.json({
+        configured: applied.board.configured,
+        board: applied.board,
+        did: applied.did,
+        line: applied.line,
+      });
     }
     return NextResponse.json({ error: "UNKNOWN" }, { status: 400 });
   } catch (error) {

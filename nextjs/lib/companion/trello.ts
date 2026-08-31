@@ -9,8 +9,18 @@ export const TRELLO_API = "https://api.trello.com/1";
 
 export type TrelloCreds = { key: string; token: string };
 
+export const RA_MISSING_LINE = "Ra no está.";
+
 export type RaList = { id: string; name: string; pos: number };
-export type RaCard = { id: string; name: string; idList: string; closed: boolean; pos: number };
+export type RaCard = {
+  id: string;
+  name: string;
+  idList: string;
+  closed: boolean;
+  pos: number;
+  due: string | null;
+  dueComplete?: boolean;
+};
 export type RaBoard = {
   id: string;
   name: string;
@@ -68,7 +78,7 @@ export function cardsInList(board: RaBoard, listId: string): RaCard[] {
 }
 
 export function boardLine(board: RaBoard): string {
-  if (!board.configured) return "Ra todavía no.";
+  if (!board.configured) return RA_MISSING_LINE;
   if (!board.lists.length) return "Ra vacío.";
   const parts = board.lists.map((list) => {
     const cards = cardsInList(board, list.id);
@@ -195,8 +205,18 @@ export async function loadRaBoard(
       undefined,
       fetchImpl,
     ),
-    trelloFetch<Array<{ id: string; name: string; idList: string; closed: boolean; pos: number }>>(
-      `/boards/${RA_BOARD_ID}/cards?filter=open`,
+    trelloFetch<
+      Array<{
+        id: string;
+        name: string;
+        idList: string;
+        closed: boolean;
+        pos: number;
+        due: string | null;
+        dueComplete?: boolean;
+      }>
+    >(
+      `/boards/${RA_BOARD_ID}/cards?filter=open&fields=name,idList,closed,pos,due,dueComplete`,
       creds,
       undefined,
       fetchImpl,
@@ -212,6 +232,8 @@ export async function loadRaBoard(
       idList: c.idList,
       closed: !!c.closed,
       pos: c.pos,
+      due: c.due || null,
+      dueComplete: !!c.dueComplete,
     })),
     configured: true,
   };
@@ -225,13 +247,29 @@ export async function addRaCard(
 ): Promise<RaCard> {
   const creds = trelloCredentials(env);
   if (!creds) throw new Error("TRELLO_UNCONFIGURED");
-  const card = await trelloFetch<{ id: string; name: string; idList: string; closed: boolean; pos: number }>(
+  const card = await trelloFetch<{
+    id: string;
+    name: string;
+    idList: string;
+    closed: boolean;
+    pos: number;
+    due: string | null;
+    dueComplete?: boolean;
+  }>(
     `/cards?idList=${encodeURIComponent(listId)}&name=${encodeURIComponent(title.slice(0, 180))}`,
     creds,
     { method: "POST" },
     fetchImpl,
   );
-  return { id: card.id, name: card.name, idList: card.idList, closed: !!card.closed, pos: card.pos };
+  return {
+    id: card.id,
+    name: card.name,
+    idList: card.idList,
+    closed: !!card.closed,
+    pos: card.pos,
+    due: card.due || null,
+    dueComplete: !!card.dueComplete,
+  };
 }
 
 export async function moveRaCard(
@@ -268,7 +306,9 @@ export async function applyRaIntent(
 ): Promise<{ board: RaBoard; line: string; did: "list" | "add" | "move" | "done" | "chat" | "need-trello" }> {
   const configured = trelloConfigured(env);
   if (!configured) {
-    return { board: emptyRaBoard(), line: "Ra todavía no.", did: intent.type === "chat" ? "chat" : "need-trello" };
+    const line =
+      intent.type === "add" ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE;
+    return { board: emptyRaBoard(), line, did: intent.type === "chat" ? "chat" : "need-trello" };
   }
   let board = await loadRaBoard(env, fetchImpl);
   if (intent.type === "list" || intent.type === "chat") {
