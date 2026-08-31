@@ -12,8 +12,10 @@ export const SPRITE_SIZE = 128;
 export const TICK_MS = 40;
 export const SPRITE_BASE = "/sprites/mochi/";
 export const LULOX_SPRITE_BASE = "/sprites/lulox/";
+export const NIMBO_SPRITE_BASE = "/sprites/nimbo/";
+export const COORD_SPRITE_BASE = NIMBO_SPRITE_BASE;
 
-export type SpritePackId = "mochi" | "lulox";
+export type SpritePackId = "mochi" | "lulox" | "nimbo";
 
 export const PHYSICS = {
   gravity: 2,
@@ -140,6 +142,10 @@ export function spriteUrl(key: string, pack: SpritePackId = "mochi"): string {
   if (pack === "lulox") {
     const file = LULOX_SPRITES[key] || LULOX_SPRITES["stand-neutral"];
     return `${LULOX_SPRITE_BASE}${file}`;
+  }
+  if (pack === "nimbo") {
+    const file = SPRITES[key] || SPRITES["stand-neutral"];
+    return `${NIMBO_SPRITE_BASE}${file}`;
   }
   const file = SPRITES[key] || SPRITES["stand-neutral"];
   return `${SPRITE_BASE}${file}`;

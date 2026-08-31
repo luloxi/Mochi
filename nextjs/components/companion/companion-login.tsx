@@ -48,10 +48,10 @@ export function CompanionLogin({
             return;
           }
           if (json?.error === "denied") {
-            setError("Este mail no entra. Es una pieza para Katho y Lulox, los dos.");
+            setError("Este mail no entra.");
             return;
           }
-          setError("No se pudo entrar. Probá de nuevo.");
+          setError("Probá de nuevo.");
         },
       });
       btnRef.current.innerHTML = "";
@@ -60,13 +60,15 @@ export function CompanionLogin({
         size: "large",
         text: "continue_with",
         shape: "pill",
-        width: 280,
+        width: 240,
       });
       return true;
     };
-    if (boot()) return () => {
-      cancelled = true;
-    };
+    if (boot()) {
+      return () => {
+        cancelled = true;
+      };
+    }
     const id = window.setInterval(() => {
       if (boot()) window.clearInterval(id);
     }, 250);
@@ -77,23 +79,12 @@ export function CompanionLogin({
   }, [clientId, onSession]);
 
   return (
-    <div className="companion-root companion-login" data-companion-surface>
+    <div className="companion-login-card" data-companion-login>
       <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
-      <div className="companion-login-card">
-        <p className="companion-login-hi">Hola.</p>
-        <p>
-          Entrá con Google. Así sabemos si sos Katho o Lulox, y Mochi con el gato se encuentran
-          cuando están los dos.
-        </p>
-        {clientId ? (
-          <div ref={btnRef} className="companion-google-btn" />
-        ) : (
-          <p className="empty-note">
-            Falta la clave de Google en este deploy. Cuando esté, el botón aparece acá.
-          </p>
-        )}
-        {error ? <p className="companion-login-error">{error}</p> : null}
-      </div>
+      <p className="companion-login-hi">Hola.</p>
+      <p className="companion-login-line">Katho ella. Lulox él. Los dos.</p>
+      {clientId ? <div ref={btnRef} className="companion-google-btn" /> : null}
+      {error ? <p className="companion-login-error">{error}</p> : null}
     </div>
   );
 }

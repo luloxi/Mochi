@@ -30,14 +30,7 @@ import {
   simulateIncomingDm,
   toggleAgentWorking,
 } from "./companion-core";
-import {
-  buildGrokChatRequest,
-  buildGrokConnectUrl,
-  emptyGrokSession,
-  grokConnectIsRealTarget,
-  isGrokConnected,
-  parseGrokApiKey,
-} from "./grok-connect";
+import { buildLlmRequest, pickLlmProvider } from "./llm";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const mochiDir = join(here, "../../public/sprites/mochi");
@@ -195,22 +188,25 @@ describe("mochi walk / star / sit-pc", () => {
   });
 });
 
-describe("grok connect", () => {
-  it("unsubscribed Connect produces a real Grok/xAI auth target", () => {
-    const session = emptyGrokSession();
-    assert.equal(isGrokConnected(session), false);
-    const url = buildGrokConnectUrl({ returnTo: "https://example.com/companion?grok=return" });
-    assert.equal(grokConnectIsRealTarget(url), true);
-    assert.match(url, /accounts\.x\.ai|auth\.x\.ai|grok\.com|api\.x\.ai/);
-    assert.doesNotMatch(url, /\/settings$/);
-    const req = buildGrokChatRequest({
-      apiKey: "xai-test-key-not-real-0001",
+describe("in-app llm", () => {
+  it("uses OpenAI or xAI API in-app, never grok.com as the chat", () => {
+    const none = pickLlmProvider({});
+    assert.equal(none.provider, "none");
+    const openai = pickLlmProvider({ OPENAI_API_KEY: "sk-test" });
+    const req = buildLlmRequest({
+      pick: openai,
       messages: [{ role: "user", content: "hola" }],
     });
-    assert.match(req.url, /api\.x\.ai/);
-    assert.equal(req.headers.Authorization.startsWith("Bearer "), true);
-    assert.equal(parseGrokApiKey("xai-abcdefghijklmnopqrstuv"), "xai-abcdefghijklmnopqrstuv");
-    assert.equal(parseGrokApiKey("no"), null);
+    assert.ok(req);
+    assert.match(req!.url, /api\.openai\.com/);
+    assert.doesNotMatch(req!.url, /grok\.com/);
+    const xai = buildLlmRequest({
+      pick: pickLlmProvider({ XAI_API_KEY: "xai-test" }),
+      messages: [{ role: "user", content: "hola" }],
+    });
+    assert.ok(xai);
+    assert.match(xai!.url, /api\.x\.ai/);
+    assert.doesNotMatch(xai!.url, /grok\.com/);
   });
 });
 

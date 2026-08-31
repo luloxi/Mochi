@@ -124,8 +124,13 @@ export function deskZones(
   mode: "together" | "separate",
   action: TogetherAction | "idle" | "separate",
   width: number,
-): { mochi: DeskZone; lulox: DeskZone } {
+): { mochi: DeskZone; lulox: DeskZone; nimbo: DeskZone } {
   const w = Math.max(320, width);
+  const mid = w * 0.5;
+  const nimbo: DeskZone =
+    mode === "separate"
+      ? { xMin: w * 0.38, xMax: w * 0.62, gatherX: mid, facingRight: true }
+      : { xMin: w * 0.04, xMax: w * 0.22, gatherX: w * 0.12, facingRight: true };
   if (mode === "separate") {
     return {
       mochi: {
@@ -140,31 +145,34 @@ export function deskZones(
         gatherX: w * 0.84,
         facingRight: false,
       },
+      nimbo,
     };
   }
-  const mid = w * 0.5;
   if (action === "kiss") {
     return {
       mochi: { xMin: mid - 140, xMax: mid - 8, gatherX: mid - 36, facingRight: true },
       lulox: { xMin: mid + 8, xMax: mid + 140, gatherX: mid + 36, facingRight: false },
+      nimbo,
     };
   }
   if (action === "idle-chat") {
     return {
       mochi: { xMin: mid - 180, xMax: mid - 10, gatherX: mid - 70, facingRight: true },
       lulox: { xMin: mid + 10, xMax: mid + 180, gatherX: mid + 70, facingRight: false },
+      nimbo,
     };
   }
   if (action === "walk-together") {
     return {
       mochi: { xMin: w * 0.18, xMax: w * 0.72, gatherX: mid - 50, facingRight: true },
       lulox: { xMin: w * 0.26, xMax: w * 0.8, gatherX: mid + 50, facingRight: true },
+      nimbo,
     };
   }
-  // hop + idle: near each other, not glued
   return {
     mochi: { xMin: mid - 200, xMax: mid - 16, gatherX: mid - 80, facingRight: true },
     lulox: { xMin: mid + 16, xMax: mid + 200, gatherX: mid + 80, facingRight: false },
+    nimbo,
   };
 }
 
@@ -172,7 +180,15 @@ export function zonesAreApart(zones: { mochi: DeskZone; lulox: DeskZone }): bool
   return zones.mochi.xMax <= zones.lulox.xMin;
 }
 
+export function leaveSignalText(view: PresenceView): string | null {
+  if (view.mode !== "separate" || view.pair !== "one-away") return null;
+  if (view.left === "lulox") return "Lulox se fue";
+  if (view.left === "katho") return "Katho se fue";
+  return null;
+}
+
 export const IDLE_CHAT_LINES = {
   mochi: ["che", "acá estoy", "dale"],
   lulox: ["miau", "dale", "sigo"],
+  nimbo: ["dale"],
 } as const;

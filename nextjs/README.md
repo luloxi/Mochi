@@ -7,7 +7,7 @@ Frontend Next.js para la experiencia AVAX/EVM de Mochi.
 - Landing y marketplace.
 - Conexión wallet con RainbowKit + wagmi + viem.
 - API routes para perfiles, feedback, suscripciones y utilidades del sitio.
-- Compañera en `/companion`: escritorio fullscreen. Google (solo Katho y Lulox). Tres chats (Mochi rosa, Lulox cian, App oro/gris). DM entre celus. Juntas/separadas cuando uno se va. Tableros hacia los Sueños. Mochi camina (capa rojo/amarillo, estrellita al ojo que lidera, sin voltear el traje). Lulox es el gato ninja.
+- Compañera en `/companion`: escritorio fullscreen. Google (solo Katho y Lulox). Tres mascotas (Mochi rosa, Lulox cian, Nimbo oro/gris). Click al otro = chat humano. Nimbo mueve Ra. Juntos si los dos están, aparte si uno se va. Mochi camina (capa rojo/amarillo, estrellita al ojo que lidera, sin voltear el traje). Lulox es el gato ninja.
 
 ## Variables principales
 

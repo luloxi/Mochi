@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -25,8 +25,17 @@ import {
   CHAT_WINDOWS,
   appAgentCanDrive,
   chatWindowList,
+  nimboCanDrive,
   parseAppAgentIntent,
+  parseNimboIntent,
 } from "./chats";
+import {
+  BUBBLE_PLACEMENT,
+  DESK_CHARACTERS,
+  bubbleAboveHead,
+  firstPaintViolations,
+} from "./desk";
+import { leaveSignalText } from "./presence";
 import {
   companionSyncApi,
   createMemorySyncStore,
@@ -39,16 +48,15 @@ import {
   statusFromHeartbeat,
   zonesAreApart,
 } from "./presence";
+import { boardLegendLine } from "./boards";
+import { NIMBO_NAME, NIMBO_SOUL, extractLlmText, localNimboReply, pickLlmProvider } from "./llm";
 import {
-  FEEL_COLOR_IDS,
-  addBoard,
-  addCard,
-  addColumn,
-  applyBoardAction,
-  boardLegendLine,
-  boardsMentionSuenos,
-  sampleSuenosBoard,
-} from "./boards";
+  applyRaIntent,
+  parseRaIntent,
+  trelloConfigured,
+  type RaBoard,
+} from "./trello";
+import { NIMBO_SPRITE_BASE, spriteUrl } from "./shimeji-engine";
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres)\b/i;
 
@@ -102,41 +110,38 @@ describe("google allowlist + session", () => {
   });
 });
 
-describe("three chats + app agent intents", () => {
-  it("ships three chat identities with pink / cyan / gold-gray", () => {
+describe("three chats + nimbo Ra intents", () => {
+  it("ships three character identities with pink / cyan / gold", () => {
     const list = chatWindowList();
     assert.equal(list.length, 3);
     assert.equal(CHAT_WINDOWS.mochi.colorName, "pink");
     assert.equal(CHAT_WINDOWS.lulox.colorName, "cyan");
-    assert.equal(CHAT_WINDOWS["app-agent"].colorName, "gold-gray");
+    assert.equal(CHAT_WINDOWS.nimbo.colorName, "gold");
     assert.match(CHAT_WINDOWS.mochi.hex, /#ff8fcf/i);
     assert.match(CHAT_WINDOWS.lulox.hex, /#7ad7ff/i);
-    assert.match(CHAT_WINDOWS["app-agent"].hex, /#c9b37a/i);
+    assert.match(CHAT_WINDOWS.nimbo.hex, /#d4a017/i);
+    assert.notEqual(CHAT_WINDOWS.nimbo.colorName, "pink");
+    assert.notEqual(CHAT_WINDOWS.nimbo.colorName, "cyan");
+    assert.equal(DESK_CHARACTERS.length, 3);
+    assert.equal(DESK_CHARACTERS[0].id, "mochi");
+    assert.equal(DESK_CHARACTERS[1].id, "lulox");
+    assert.equal(DESK_CHARACTERS[2].id, "nimbo");
+    assert.equal(DESK_CHARACTERS[2].name, NIMBO_NAME);
+    assert.notEqual(NIMBO_NAME.toLowerCase(), "grok");
+    assert.notEqual(NIMBO_NAME.toLowerCase(), "chano");
   });
 
-  it("App-agent intents can start pomodoro, play YouTube, and act on boards", () => {
-    const pomo = parseAppAgentIntent("arrancá el pomodoro 25 min");
-    assert.equal(pomo.type, "pomodoro");
-    if (pomo.type === "pomodoro") assert.equal(pomo.action, "start");
-    assert.equal(appAgentCanDrive(pomo), true);
-
-    const yt = parseAppAgentIntent("poné https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-    assert.equal(yt.type, "video");
-    assert.equal(appAgentCanDrive(yt), true);
-
-    const openBoard = parseAppAgentIntent("abrí el tablero");
-    assert.equal(openBoard.type, "board");
-    if (openBoard.type === "board") assert.equal(openBoard.action, "open");
-    const col = parseAppAgentIntent("agregá una columna Esta semana");
-    assert.equal(col.type, "board");
-    if (col.type === "board") assert.equal(col.action, "add-column");
-    const card = parseAppAgentIntent("nueva tarjeta coordinar Neuralink");
-    assert.equal(card.type, "board");
-    if (card.type === "board") {
-      assert.equal(card.action, "add-card");
-      assert.equal(card.color, "blue");
-    }
+  it("nimbo intents act on Ra", () => {
+    const openBoard = parseNimboIntent("abrí el tablero");
+    assert.equal(openBoard.type, "list");
+    assert.equal(nimboCanDrive(openBoard), true);
     assert.equal(appAgentCanDrive(openBoard), true);
+    const add = parseNimboIntent("agregá comprar pan");
+    assert.equal(add.type, "add");
+    if (add.type === "add") assert.match(add.title, /comprar pan/i);
+    const done = parseRaIntent("listo comprar pan");
+    assert.equal(done.type, "done");
+    assert.equal(parseAppAgentIntent("qué hay en ra").type, "list");
   });
 });
 
@@ -246,42 +251,13 @@ describe("together / apart presence", () => {
   });
 });
 
-describe("boards + legend + Sueños + copy", () => {
-  it("add board, add column, place a card; six feels and the legend phrases", () => {
-    let boards = [] as ReturnType<typeof sampleSuenosBoard>[];
-    boards = addBoard(boards, "Pasos de hoy").boards;
-    boards = boards.map((b) => addColumn(b, "Clínica"));
-    const clinic = boards[0].columns.find((c) => c.title === "Clínica");
-    assert.ok(clinic);
-    boards = boards.map((b) => addCard(b, clinic!.id, "Llamar", "orange"));
-    assert.equal(boards[0].columns.at(-1)?.cards[0]?.color, "orange");
-    const viaIntent = applyBoardAction(boards, { action: "add-card", title: "papel", color: "purple" });
-    assert.ok(viaIntent[0].columns.some((c) => c.cards.some((card) => card.color === "purple")));
-    const legend = boardLegendLine();
-    assert.match(legend, /se pudre/);
-    assert.match(legend, /hay que hacerlo/);
-    assert.match(legend, /idea\/someday/);
-    assert.match(legend, /parked/);
-    assert.match(legend, /coordinar/);
-    assert.match(legend, /trámite/);
-    assert.deepEqual(FEEL_COLOR_IDS, ["red", "orange", "yellow", "green", "blue", "purple"]);
-  });
-
-  it("sample board mentions concrete Sueños work", () => {
-    const sample = sampleSuenosBoard();
-    assert.equal(boardsMentionSuenos([sample]), true);
-    const blob = JSON.stringify(sample).toLowerCase();
-    assert.match(blob, /pierna/);
-    assert.match(blob, /neuralink/);
-    assert.match(blob, /elon|spacex/);
-  });
-
+describe("copy + llm + trello", () => {
   it("Katho pronoun ella, Lulox él; soul/copy forbids inclusive Spanish", () => {
     assert.equal(PEOPLE.katho.pronoun, "ella");
     assert.equal(PEOPLE.lulox.pronoun, "él");
     assert.equal(PERSONAS.katho.pronoun, "ella");
     assert.equal(PERSONAS.lulox.pronoun, "él");
-    const soul = `${COMPANION_SOUL}\n${PERSONAS.katho.soul}\n${PERSONAS.lulox.soul}\n${boardLegendLine()}`;
+    const soul = `${COMPANION_SOUL}\n${PERSONAS.katho.soul}\n${PERSONAS.lulox.soul}\n${NIMBO_SOUL}\n${boardLegendLine()}`;
     assert.equal(INCLUSIVE.test(soul), false);
     assert.match(soul, /ella/);
     assert.match(soul, /él/);
@@ -293,6 +269,71 @@ describe("boards + legend + Sueños + copy", () => {
       todos: [],
     });
     assert.equal(INCLUSIVE.test(reply), false);
+    assert.equal(INCLUSIVE.test(localNimboReply("hola")), false);
+  });
+
+  it("OPENAI first, then xAI, else none — vibes still work", () => {
+    assert.equal(pickLlmProvider({}).provider, "none");
+    assert.equal(pickLlmProvider({ OPENAI_API_KEY: "sk-test" }).provider, "openai");
+    assert.equal(pickLlmProvider({ OPENAI_API_KEY: "sk-test", XAI_API_KEY: "xai-test" }).provider, "openai");
+    assert.equal(pickLlmProvider({ GROK_API_KEY: "xai-test" }).provider, "xai");
+    assert.equal(pickLlmProvider({ XAI_API_KEY: "xai-test" }).provider, "xai");
+    const openai = pickLlmProvider({ OPENAI_API_KEY: "sk-test" });
+    assert.match(openai.url || "", /api\.openai\.com/);
+    const xai = pickLlmProvider({ XAI_API_KEY: "xai-test" });
+    assert.match(xai.url || "", /api\.x\.ai/);
+    assert.doesNotMatch(xai.url || "", /grok\.com/);
+    assert.equal(extractLlmText({ choices: [{ message: { content: " Dale. " } }] }), "Dale.");
+    assert.match(localNimboReply("hola"), /Hola|Ra/i);
+  });
+
+  it("Trello Ra add/move/done against a fake board", async () => {
+    assert.equal(trelloConfigured({}), false);
+    const none = await applyRaIntent({ type: "add", title: "pan" }, {});
+    assert.equal(none.did, "need-trello");
+
+    const lists = [
+      { id: "l1", name: "Hacer", pos: 1 },
+      { id: "l2", name: "Listo", pos: 2 },
+    ];
+    const cards: Array<{ id: string; name: string; idList: string; closed: boolean; pos: number }> = [];
+    const fetchImpl: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/lists")) {
+        return new Response(JSON.stringify(lists), { status: 200 });
+      }
+      if (url.includes("/cards?") && url.includes("filter=open") && (!init || !init.method || init.method === "GET")) {
+        return new Response(JSON.stringify(cards), { status: 200 });
+      }
+      if (url.includes("/cards?") && init?.method === "POST") {
+        const name = new URL(url).searchParams.get("name") || "x";
+        const idList = new URL(url).searchParams.get("idList") || "l1";
+        const card = { id: `c${cards.length + 1}`, name, idList, closed: false, pos: cards.length };
+        cards.push(card);
+        return new Response(JSON.stringify(card), { status: 200 });
+      }
+      if (url.includes("/cards/") && init?.method === "PUT") {
+        const id = url.split("/cards/")[1].split("?")[0];
+        const u = new URL(url);
+        const card = cards.find((c) => c.id === id);
+        if (card && u.searchParams.get("idList")) card.idList = u.searchParams.get("idList")!;
+        if (card && u.searchParams.get("closed") === "true") card.closed = true;
+        return new Response(JSON.stringify(card || {}), { status: 200 });
+      }
+      return new Response("no", { status: 404 });
+    }) as typeof fetch;
+
+    const env = { TRELLO_API_KEY: "k", TRELLO_TOKEN: "t" };
+    const added = await applyRaIntent({ type: "add", title: "comprar pan" }, env, fetchImpl);
+    assert.equal(added.did, "add");
+    assert.equal(added.board.configured, true);
+    assert.ok(added.board.cards.some((c) => c.name === "comprar pan"));
+    const moved = await applyRaIntent({ type: "move", title: "comprar pan", listHint: "Listo" }, env, fetchImpl);
+    assert.equal(moved.did, "move");
+    const done = await applyRaIntent({ type: "done", title: "comprar pan" }, env, fetchImpl);
+    assert.equal(done.did, "done");
+    const board: RaBoard = added.board;
+    assert.equal(board.id, "UjFhgg3n");
   });
 });
 
@@ -309,5 +350,96 @@ describe("fullscreen companion surface", () => {
     const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
     assert.match(login, /accounts\.google\.com\/gsi\/client/);
     assert.match(login, /642702167525-avdsu91g38fhspaapmn9heiie72tpkh4\.apps\.googleusercontent\.com/);
+  });
+});
+
+describe("first paint desk + bubbles + in-app llm", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+  const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+  const login = readFileSync(join(here, "../../components/companion/companion-login.tsx"), "utf8");
+  const pet = readFileSync(join(here, "../../components/companion/companion-pet.tsx"), "utf8");
+  const grokRoute = readFileSync(join(here, "../../app/api/companion/grok/route.ts"), "utf8");
+  const agentRoute = readFileSync(join(here, "../../app/api/companion/agent/route.ts"), "utf8");
+
+  it("first-paint markup has no settings dump, no grok.com, no lecture", () => {
+    const paint = `${surface}\n${css}\n${login}`;
+    assert.deepEqual(firstPaintViolations(paint), []);
+    assert.doesNotMatch(paint, /console\.x\.ai/);
+    assert.doesNotMatch(paint, /grok\.com/);
+    assert.doesNotMatch(paint, /Chano/);
+    assert.doesNotMatch(surface, /placeholder=["']xai/);
+    assert.doesNotMatch(surface, /Pomodoro|YouTube|Radio|Miniapps/);
+    assert.doesNotMatch(login, /Entrá con Google\. Así sabemos/);
+    assert.match(surface, /data-companion-desk/);
+    assert.match(css, /--c-ink:\s*#140c18/);
+  });
+
+  it("bubbles sit above mascot heads, not a giant form", () => {
+    assert.equal(BUBBLE_PLACEMENT, "above-head");
+    assert.match(pet, /data-bubble-placement="above-head"/);
+    assert.match(pet, /className="mascot-bubble"/);
+    assert.match(css, /\.mascot-bubble/);
+    assert.match(css, /bottom:\s*calc\(100%/);
+    assert.match(css, /\.companion-mascot[\s\S]*overflow:\s*visible/);
+    assert.match(surface, /talk-window/);
+    assert.doesNotMatch(surface, /companion-composer/);
+    const incoming = {
+      id: "dm-1",
+      from: "lulox" as const,
+      content: "Katho, te dejo un recado desde el otro celu",
+      createdAt: "2026-08-30T00:00:00.000Z",
+    };
+    const bubbled = bubbleAboveHead({ character: "lulox", dms: [incoming] });
+    assert.match(bubbled, /otro celu/);
+    assert.match(bubbled, /Katho, te dejo un recado/);
+    assert.equal(bubbleAboveHead({ character: "mochi", dms: [] }), "hola");
+    assert.equal(bubbleAboveHead({ character: "nimbo", dms: [], nimboLines: ["dale"] }), "dale");
+  });
+
+  it("LLM is in-app and never opens grok.com as the chat", () => {
+    assert.match(agentRoute, /completeLlmChat|pickLlmProvider/);
+    assert.doesNotMatch(agentRoute, /grok\.com/);
+    assert.doesNotMatch(surface, /grok\.com/);
+    assert.doesNotMatch(surface, /buildGrokConnectUrl/);
+    assert.match(grokRoute, /GONE|\/api\/companion\/agent/);
+    assert.match(spriteUrl("stand-neutral", "nimbo"), new RegExp(NIMBO_SPRITE_BASE.replace(/\//g, "\\/")));
+  });
+
+  it("one-away leave signal is visible and short; click other pet is human chat", () => {
+    const away = leaveSignalText({
+      pair: "one-away",
+      mode: "separate",
+      action: "separate",
+      lastTogetherAt: null,
+      left: "lulox",
+    });
+    assert.equal(away, "Lulox se fue");
+    const kathoLeft = leaveSignalText({
+      pair: "one-away",
+      mode: "separate",
+      action: "separate",
+      lastTogetherAt: null,
+      left: "katho",
+    });
+    assert.equal(kathoLeft, "Katho se fue");
+    assert.equal(
+      leaveSignalText({
+        pair: "both-present",
+        mode: "together",
+        action: "kiss",
+        lastTogetherAt: 1,
+      }),
+      null,
+    );
+    assert.match(surface, /data-leave-signal/);
+    assert.match(pet, /onNimboClick/);
+    assert.match(pet, /pack="nimbo"/);
+    assert.match(surface, /clickLulox|seat === "katho"/);
+    assert.match(surface, /clickMochi|seat === "lulox"/);
+    const hereSprites = join(dirname(fileURLToPath(import.meta.url)), "../../public/sprites");
+    assert.equal(existsSync(join(hereSprites, "nimbo/stand-neutral.png")), true);
+    assert.equal(existsSync(join(hereSprites, "mochi/stand-neutral.png")), true);
+    assert.equal(existsSync(join(hereSprites, "lulox/stand-neutral.png")), true);
   });
 });

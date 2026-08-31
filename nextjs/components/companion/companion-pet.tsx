@@ -178,7 +178,15 @@ export function CompanionWanderer({
           data-no-flip="true"
           data-together-mode={togetherMode || undefined}
           data-together-action={togetherAction || undefined}
-          aria-label={label || (pack === "lulox" ? "Lulox, el gato ninja" : "Mochi, arrastrala o mirala caminar")}
+          aria-label={
+            label ||
+            (pack === "lulox"
+              ? "Lulox, el gato ninja"
+              : pack === "nimbo"
+                ? "Nimbo"
+                : "Mochi")
+          }
+          data-character={pack}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
@@ -186,7 +194,7 @@ export function CompanionWanderer({
         >
           <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
           {bubble ? (
-            <span className="mascot-idle-chat" role="status">
+            <span className="mascot-bubble" data-bubble-placement="above-head" role="status">
               {bubble}
             </span>
           ) : null}
@@ -260,8 +268,12 @@ export function CompanionPair({
   luloxWorking,
   mochiAlert,
   luloxAlert,
+  mochiBubble,
+  luloxBubble,
+  nimboBubble,
   onMochiClick,
   onLuloxClick,
+  onNimboClick,
   scale = 0.72,
 }: {
   view: PresenceView;
@@ -269,8 +281,12 @@ export function CompanionPair({
   luloxWorking: boolean;
   mochiAlert: string | null;
   luloxAlert: string | null;
+  mochiBubble?: string | null;
+  luloxBubble?: string | null;
+  nimboBubble?: string | null;
   onMochiClick: () => void;
   onLuloxClick: () => void;
+  onNimboClick: () => void;
   scale?: number;
 }) {
   const [width, setWidth] = useState(800);
@@ -297,13 +313,25 @@ export function CompanionPair({
         perch={null}
         scale={scale}
         pack="mochi"
+        label="Mochi"
         alertText={mochiAlert}
         onClick={onMochiClick}
         bias={{ ...zones.mochi, pose }}
         extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
-        bubble={chat ? "che" : null}
+        bubble={mochiBubble ?? (chat ? "che" : "hola")}
         togetherMode={view.mode}
         togetherAction={view.action}
+      />
+      <CompanionWanderer
+        working={false}
+        perch={null}
+        scale={scale * 0.88}
+        pack="nimbo"
+        label="Nimbo"
+        onClick={onNimboClick}
+        bias={{ ...zones.nimbo, pose: "idle" }}
+        extraClass="is-nimbo"
+        bubble={nimboBubble ?? "dale"}
       />
       <CompanionWanderer
         working={luloxWorking}
@@ -315,7 +343,7 @@ export function CompanionPair({
         onClick={onLuloxClick}
         bias={{ ...zones.lulox, pose }}
         extraClass={`${hop ? "is-hop" : ""}${kiss ? " is-kiss" : ""}${view.mode === "separate" ? " is-apart" : " is-together"}`}
-        bubble={chat ? "miau" : null}
+        bubble={luloxBubble ?? (chat ? "miau" : "miau")}
         togetherMode={view.mode}
         togetherAction={view.action}
       />
