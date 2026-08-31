@@ -448,6 +448,9 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.match(pet, /data-bubble-placement="above-head"/);
     assert.match(pet, /className="mascot-bubble"/);
     assert.match(css, /\.mascot-bubble/);
+    assert.match(css, /width:\s*max-content/);
+    assert.match(css, /white-space:\s*nowrap/);
+    assert.match(css, /writing-mode:\s*horizontal-tb/);
     assert.match(css, /bottom:\s*calc\(100%/);
     assert.match(css, /\.companion-mascot[\s\S]*overflow:\s*visible/);
     assert.match(surface, /talk-window/);

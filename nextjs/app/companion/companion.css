@@ -212,7 +212,10 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   left: 50%;
   bottom: calc(100% + 6px);
   transform: translateX(-50%);
-  max-width: 160px;
+  /* left:50% + width:auto shrinks to remaining ~24px → one letter per line */
+  width: max-content;
+  max-width: min(240px, 70vw);
+  min-width: 3.2em;
   padding: 7px 11px;
   border: 2px solid var(--c-ink);
   border-radius: 16px 16px 16px 6px;
@@ -221,11 +224,33 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   font-size: 13px;
   font-weight: 800;
   line-height: 1.25;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
   box-shadow: 3px 4px 0 var(--c-ink);
   pointer-events: none;
   z-index: 3;
+}
+
+.mascot-bubble[data-bubble-placement="beside-left"] {
+  left: auto;
+  right: calc(100% + 8px);
+  bottom: 50%;
+  transform: translateY(50%);
+}
+
+.mascot-bubble[data-bubble-placement="beside-right"] {
+  left: calc(100% + 8px);
+  bottom: 50%;
+  transform: translateY(50%);
+}
+
+.mascot-bubble[data-bubble-placement="below-feet"] {
+  bottom: auto;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
 }
 
 .companion-mascot[data-pack="mochi"] .mascot-bubble {
