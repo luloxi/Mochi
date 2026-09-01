@@ -1605,6 +1605,9 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.match(pet, /togglePetBubble/);
     assert.match(pet, /setBubbleOpen/);
     assert.match(pet, /data-pet-globo/);
+    assert.match(pet, /data-phone-tap-opens-chat/);
+    assert.match(pet, /phone \? 28 : 5/);
+    assert.match(pet, /if \(phone\)/);
     assert.match(css, /\.mascot-bubble[\s\S]*pointer-events:\s*auto/);
     assert.match(pet, /setBubbleOpen\(\(open\) => togglePetBubble\(open\)\)/);
     assert.doesNotMatch(pet, /result === "click"[\s\S]{0,80}onClick\?\.\(\)/);

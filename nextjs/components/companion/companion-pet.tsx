@@ -31,6 +31,7 @@ import {
   prefetchFacingSprites,
 } from "@/lib/companion/star-eye";
 import { togglePetBubble } from "@/lib/companion/desk";
+import { usePhone } from "@/components/companion/companion-window";
 
 type CompanionPetProps = {
   working: boolean;
@@ -107,6 +108,7 @@ export function CompanionWanderer({
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [, setTick] = useState(0);
   const [bubbleOpen, setBubbleOpen] = useState(true);
+  const phone = usePhone();
   const bounds = useBounds(host);
 
   useEffect(() => {
@@ -152,7 +154,7 @@ export function CompanionWanderer({
   function pointerMove(event: PointerEvent<HTMLButtonElement>) {
     const mascot = mascotRef.current;
     if (!mascot) return;
-    moveDrag(mascot, event.clientX, event.clientY, bounds, scale);
+    moveDrag(mascot, event.clientX, event.clientY, bounds, scale, phone ? 28 : 5);
     setTick((n) => (n + 1) % 1_000_000);
   }
   function pointerUp(event: PointerEvent<HTMLButtonElement>) {
@@ -165,8 +167,13 @@ export function CompanionWanderer({
     }
     const result = endDrag(mascot, bounds, scale);
     if (result === "click") {
-      // Click en el pet = solo el globo. La ventana de chat se abre desde el globo.
-      setBubbleOpen((open) => togglePetBubble(open));
+      if (phone) {
+        // Celu: tap al pet abre el chat. No el baile globo/chat de desktop.
+        setBubbleOpen(true);
+        onClick?.();
+      } else {
+        setBubbleOpen((open) => togglePetBubble(open));
+      }
     }
     setTick((n) => (n + 1) % 1_000_000);
   }
@@ -201,6 +208,7 @@ export function CompanionWanderer({
           }
           data-character={pack}
           data-bubble-open={bubbleOpen ? "true" : "false"}
+          data-phone-tap-opens-chat={phone ? "true" : "false"}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}

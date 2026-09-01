@@ -790,12 +790,13 @@ export function moveDrag(
   clientY: number,
   bounds: Bounds,
   scale: number,
+  clickSlop = 5,
 ) {
   const size = SPRITE_SIZE * scale;
   if (m.dragPending) {
     const dx = clientX - m.dragStartX;
     const dy = clientY - m.dragStartY;
-    if (Math.sqrt(dx * dx + dy * dy) > 5) promoteDrag(m);
+    if (Math.sqrt(dx * dx + dy * dy) > clickSlop) promoteDrag(m);
   }
   if (!m.isDragging) return;
   m.x = clientX - m.dragOffsetX;
