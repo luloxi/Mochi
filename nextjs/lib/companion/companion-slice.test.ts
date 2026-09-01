@@ -1582,6 +1582,9 @@ describe("nimbo tools + pet bubble toggle", () => {
     const agentRoute = readFileSync(join(here, "../../app/api/companion/agent/route.ts"), "utf8");
     assert.match(pet, /togglePetBubble/);
     assert.match(pet, /setBubbleOpen/);
+    assert.match(pet, /data-pet-globo/);
+    assert.match(pet, /setBubbleOpen\(\(open\) => togglePetBubble\(open\)\)/);
+    assert.doesNotMatch(pet, /result === "click"[\s\S]{0,80}onClick\?\.\(\)/);
     assert.match(pet, /data-bubble-open/);
     assert.match(pet, /bubble && bubbleOpen/);
     assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m.edge, box.top\)\}/);

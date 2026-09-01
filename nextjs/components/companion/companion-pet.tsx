@@ -165,8 +165,8 @@ export function CompanionWanderer({
     }
     const result = endDrag(mascot, bounds, scale);
     if (result === "click") {
+      // Click en el pet = solo el globo. La ventana de chat se abre desde el globo.
       setBubbleOpen((open) => togglePetBubble(open));
-      onClick?.();
     }
     setTick((n) => (n + 1) % 1_000_000);
   }
@@ -210,7 +210,19 @@ export function CompanionWanderer({
             <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
           </span>
           {bubble && bubbleOpen ? (
-            <span className="mascot-bubble" data-bubble-placement={bubblePlacementForEdge(m.edge, box.top)} role="status">
+            <span
+              className="mascot-bubble"
+              data-bubble-placement={bubblePlacementForEdge(m.edge, box.top)}
+              data-pet-globo
+              role="status"
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onPointerUp={(event) => {
+                event.stopPropagation();
+                onClick?.();
+              }}
+            >
               {bubble}
             </span>
           ) : null}
