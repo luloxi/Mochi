@@ -215,10 +215,11 @@ export function spriteOrientTransform(edge: DeskEdge): string {
   return "none";
 }
 
-export function bubblePlacementForEdge(edge: DeskEdge): BubblePlacement {
+export function bubblePlacementForEdge(edge: DeskEdge, top = Number.POSITIVE_INFINITY): BubblePlacement {
   if (edge === "left") return "beside-right";
   if (edge === "right") return "beside-left";
   if (edge === "ceiling") return "below-feet";
+  if (top < 56) return "below-feet";
   return "above-head";
 }
 

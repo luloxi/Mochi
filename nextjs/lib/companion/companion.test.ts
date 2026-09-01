@@ -320,6 +320,8 @@ describe("shimeji perimeter + collision + snap", () => {
     assert.equal(bubblePlacementForEdge("left"), "beside-right");
     assert.equal(bubblePlacementForEdge("right"), "beside-left");
     assert.equal(bubblePlacementForEdge("floor"), "above-head");
+    assert.equal(bubblePlacementForEdge("floor", 10), "below-feet");
+    assert.equal(bubblePlacementForEdge("floor", 80), "above-head");
     assert.equal(spriteOrientTransform("ceiling"), "rotate(180deg)");
     assert.equal(spriteOrientTransform("left"), "rotate(90deg)");
     assert.equal(spriteOrientTransform("floor"), "none");

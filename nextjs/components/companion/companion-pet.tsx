@@ -210,7 +210,7 @@ export function CompanionWanderer({
             <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
           </span>
           {bubble && bubbleOpen ? (
-            <span className="mascot-bubble" data-bubble-placement={bubblePlacementForEdge(m.edge)} role="status">
+            <span className="mascot-bubble" data-bubble-placement={bubblePlacementForEdge(m.edge, box.top)} role="status">
               {bubble}
             </span>
           ) : null}

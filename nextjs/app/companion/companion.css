@@ -199,6 +199,7 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   inset: 0;
   z-index: 160;
   pointer-events: none;
+  overflow: visible;
 }
 
 .companion-mascot,
@@ -272,6 +273,12 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   box-shadow: 3px 4px 0 var(--c-ink);
   pointer-events: none;
   z-index: 3;
+}
+
+.mascot-bubble[data-bubble-placement="above-head"] {
+  bottom: calc(100% + 6px);
+  top: auto;
+  transform: translateX(-50%);
 }
 
 .mascot-bubble[data-bubble-placement="beside-left"] {

@@ -708,7 +708,7 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.equal(BUBBLE_PLACEMENT_BY_EDGE.left, "beside-right");
     assert.equal(BUBBLE_PLACEMENT_BY_EDGE.right, "beside-left");
     assert.equal(BUBBLE_PLACEMENT_BY_EDGE.ceiling, "below-feet");
-    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m\.edge\)\}/);
+    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m.edge, box.top\)\}/);
     assert.match(pet, /spriteOrientTransform\(m\.edge\)/);
     assert.match(pet, /mascotDrawTransform\(\)/);
     assert.match(pet, /data-no-flip="true"/);
@@ -1558,6 +1558,19 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.equal(turn.did, "need-trello");
   });
 
+  it("open_miniapp maps tomate notas video ruido tareas", async () => {
+    const tomate = await executeNimboTool({ id: "c1", name: "open_miniapp", arguments: { id: "tomate" } }, {}, fetch);
+    assert.equal(tomate.openApp, "pomo");
+    const tareas = await executeNimboTool({ id: "c2", name: "open_miniapp", arguments: { id: "tareas" } }, {}, fetch);
+    assert.equal(tareas.openApp, "boards");
+    const ruido = await executeNimboTool({ id: "c3", name: "open_miniapp", arguments: { id: "ruido" } }, {}, fetch);
+    assert.equal(ruido.openApp, "radio");
+    const notas = await executeNimboTool({ id: "c4", name: "open_miniapp", arguments: { id: "notas" } }, {}, fetch);
+    assert.equal(notas.openApp, "notas");
+    const video = await executeNimboTool({ id: "c5", name: "open_miniapp", arguments: { id: "video" } }, {}, fetch);
+    assert.equal(video.openApp, "video");
+  });
+
   it("pet click toggles the bubble; placement stays horizontal and near the pet", () => {
     assert.equal(togglePetBubble(true), false);
     assert.equal(togglePetBubble(false), true);
@@ -1571,7 +1584,7 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.match(pet, /setBubbleOpen/);
     assert.match(pet, /data-bubble-open/);
     assert.match(pet, /bubble && bubbleOpen/);
-    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m\.edge\)\}/);
+    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m.edge, box.top\)\}/);
     assert.match(css, /writing-mode:\s*horizontal-tb/);
     assert.match(css, /width:\s*max-content/);
     assert.match(css, /white-space:\s*nowrap/);
@@ -1579,6 +1592,8 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.match(css, /data-bubble-placement="beside-left"/);
     assert.match(css, /data-bubble-placement="beside-right"/);
     assert.match(css, /data-bubble-placement="below-feet"/);
+    assert.match(css, /data-bubble-placement="above-head"/);
+    assert.match(css, /\.companion-overlay[\s\S]*overflow:\s*visible/);
     assert.equal(COMPANION_OPEN_APP, "mochi-companion-open-app");
     assert.match(apps, /COMPANION_OPEN_APP/);
     assert.match(surface, /COMPANION_OPEN_APP/);
