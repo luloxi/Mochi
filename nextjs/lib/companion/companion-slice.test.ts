@@ -406,7 +406,8 @@ describe("copy + llm + trello", () => {
     assert.equal(trelloConfigured(null, { TRELLO_API_KEY: "k", TRELLO_TOKEN: "ENV_SECRET" }), false);
     const none = await applyRaIntent({ type: "add", title: "pan" }, {});
     assert.equal(none.did, "need-trello");
-    assert.equal(none.line, `${RA_MISSING_LINE} Te lo anoté en la lista.`);
+    assert.equal(none.line, RA_MISSING_LINE);
+    assert.doesNotMatch(none.line, /anoté/);
     const missingChat = await applyRaIntent({ type: "chat" }, {});
     assert.equal(missingChat.line, RA_MISSING_LINE);
 
@@ -1545,6 +1546,27 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.notEqual(turn.reply.trim(), "Hola. Ra está acá.");
     assert.match(turn.reply, /Flores/);
     assert.equal(turn.board.cards[0]?.feel, "orange");
+  });
+
+  it("house TRELLO_TOKEN still adds Flores when the cookie has no seat token", async () => {
+    const world = fakeRaWorld();
+    const env = { TRELLO_API_KEY: "k", TRELLO_TOKEN: "ENV_SECRET", OPENAI_API_KEY: "sk-test" };
+    const llmFetch: typeof fetch = (async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "Hola. Ra está acá." } }] }), {
+        status: 200,
+      })) as typeof fetch;
+    const turn = await runNimboTurn({
+      text: FLORES_PROMPT,
+      seat: { token: null, env },
+      env,
+      fetchImpl: world.trelloFetch,
+      llmFetch,
+    });
+    assert.ok(turn.usedTools.includes("add_ra_card"));
+    assert.equal(turn.did, "add");
+    assert.match(turn.reply, /Flores/);
+    assert.doesNotMatch(turn.reply, /anoté/);
+    assert.equal(turn.board.cards.some((c) => /Flores/i.test(c.name)), true);
   });
 
   it("unconnected Ra says so instead of pretending", async () => {

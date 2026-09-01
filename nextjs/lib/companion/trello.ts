@@ -112,6 +112,16 @@ export function seatTrelloCreds(
   return { key, token: t };
 }
 
+/** Luciano's house key on Vercel. Fallback so Nimbo can write when the cookie has no seat token. */
+export function houseTrelloCreds(
+  env: Record<string, string | undefined> = process.env,
+): TrelloCreds | null {
+  const key = trelloApiKey(env);
+  const token = String(env.TRELLO_TOKEN || "").trim();
+  if (!key || !token) return null;
+  return { key, token };
+}
+
 export function resolveRaSeat(seat: RaSeat = {}): {
   token: string | null;
   env: Record<string, string | undefined>;
@@ -145,7 +155,7 @@ function authQuery(creds: TrelloCreds): string {
 
 function credsOrNull(seat: RaSeat = {}): TrelloCreds | null {
   const resolved = resolveRaSeat(seat);
-  return seatTrelloCreds(resolved.token, resolved.env);
+  return seatTrelloCreds(resolved.token, resolved.env) || houseTrelloCreds(resolved.env);
 }
 
 export function emptyRaBoard(): RaBoard {
@@ -713,7 +723,7 @@ export async function addRaCardNamed(
   if (!creds) {
     return {
       board: emptyRaBoard(),
-      line: title ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE,
+      line: RA_MISSING_LINE,
       did: "need-trello",
     };
   }
@@ -899,7 +909,7 @@ export async function applyRaIntent(
   const creds = credsOrNull(seat);
   if (!creds) {
     const line =
-      intent.type === "add" ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE;
+      RA_MISSING_LINE;
     return { board: emptyRaBoard(), line, did: intent.type === "chat" ? "chat" : "need-trello" };
   }
   let board = await loadRaBoard(seat, fetchImpl);

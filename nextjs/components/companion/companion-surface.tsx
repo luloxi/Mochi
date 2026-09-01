@@ -417,7 +417,6 @@ export function CompanionSurface() {
       if (typeof json?.openApp === "string" && json.openApp) {
         window.dispatchEvent(new CustomEvent(COMPANION_OPEN_APP, { detail: { id: json.openApp } }));
       }
-      if (json?.did === "need-trello" && intent.type === "add") addTodoItem(intent.title);
       setNimboLines((prev) => [...prev, reply].slice(-12));
       setNimboLog((prev) =>
         [

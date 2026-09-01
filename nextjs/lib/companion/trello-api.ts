@@ -24,6 +24,7 @@ import {
   moveRaCard,
   parseRaIntent,
   publicTrelloPayload,
+  houseTrelloCreds,
   trelloConfigured,
   verifySeatTrello,
   type RaSeat,
@@ -52,7 +53,7 @@ export async function handleCompanionTrelloRequest(args: {
   const origin = String(args.origin || "").trim();
 
   if (args.method === "GET") {
-    const configured = trelloConfigured(seat.token, env);
+    const configured = trelloConfigured(seat.token, env) || Boolean(houseTrelloCreds(env));
     if (!configured) {
       const board = emptyRaBoard();
       return { status: 200, body: publicTrelloPayload({ board, origin, env }) };
@@ -105,7 +106,7 @@ export async function handleCompanionTrelloRequest(args: {
           origin,
           env,
           did: "need-trello",
-          line: action === "add" ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE,
+          line: RA_MISSING_LINE,
         }),
       };
     }
