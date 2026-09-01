@@ -9,7 +9,7 @@ import type { FeelColor } from "./boards";
 import { FEEL_COLOR_IDS, parseFeelColor } from "./boards";
 import {
   RA_MISSING_LINE,
-  addRaCard,
+  addRaCardNamed,
   applyRaIntent,
   archiveRaCard,
   assignRaCard,
@@ -19,10 +19,8 @@ import {
   doneRaCard,
   dueRaCard,
   emptyRaBoard,
-  inboxList,
   linkRaCard,
   loadRaBoard,
-  matchList,
   moveRaCard,
   parseRaIntent,
   publicTrelloPayload,
@@ -130,15 +128,20 @@ export async function handleCompanionTrelloRequest(args: {
     if (action === "add") {
       const title = typeof json.title === "string" ? json.title.trim() : "";
       if (!title) return { status: 400, body: { error: "EMPTY" } };
-      const board = await loadRaBoard(seat, fetchImpl);
-      const list =
-        (typeof json.listId === "string" && board.lists.find((l) => l.id === json.listId)) ||
-        (typeof json.listHint === "string" && matchList(board, json.listHint)) ||
-        inboxList(board);
-      if (!list) return { status: 400, body: { error: "NO_LIST" } };
-      await addRaCard(title, list.id, seat, fetchImpl);
-      const next = await loadRaBoard(seat, fetchImpl);
-      return { status: 200, body: publicTrelloPayload({ board: next, origin, env, did: "add" }) };
+      const added = await addRaCardNamed(
+        {
+          title,
+          listId: typeof json.listId === "string" ? json.listId : undefined,
+          listHint: typeof json.listHint === "string" ? json.listHint : undefined,
+          color: typeof json.color === "string" ? json.color : undefined,
+        },
+        seat,
+        fetchImpl,
+      );
+      return {
+        status: 200,
+        body: publicTrelloPayload({ board: added.board, origin, env, did: added.did, line: added.line }),
+      };
     }
     if (action === "move") {
       const cardId = typeof json.cardId === "string" ? json.cardId : "";

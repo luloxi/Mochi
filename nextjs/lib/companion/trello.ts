@@ -5,7 +5,7 @@
  * and must never stand in for Katho or Lulox.
  */
 
-import type { FeelColor } from "./boards";
+import { FEEL_COLORS, parseFeelColor, type FeelColor } from "./boards";
 import type { PersonId } from "./companion-core";
 
 export const RA_BOARD_ID = "UjFhgg3n";
@@ -61,7 +61,7 @@ export type RaBoard = {
 
 export type RaIntent =
   | { type: "list" }
-  | { type: "add"; title: string; listHint?: string }
+  | { type: "add"; title: string; listHint?: string; color?: string }
   | { type: "move"; title: string; listHint: string }
   | { type: "done"; title: string }
   | { type: "chat" };
@@ -408,6 +408,63 @@ function includesAny(hay: string, needles: string[]) {
   return needles.some((n) => hay.includes(n));
 }
 
+const COLOR_WORD = /\b(naranja|rojo|roja|azul|violeta|lila|amarillo|verde|orange|red|blue|purple|yellow|green)\b/i;
+
+export function parseAddCardFromChat(raw: string): { title: string; listHint?: string; color?: string } | null {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  const wants =
+    includesAny(lower, [
+      "agregá",
+      "agrega",
+      "sumá",
+      "suma",
+      "anotá",
+      "anota",
+      "nueva tarea",
+      "nueva card",
+      "add ",
+    ]) ||
+    (includesAny(lower, ["tarjeta", "card"]) && includesAny(lower, ["tablero", "lista", "traer"]));
+  if (!wants) return null;
+
+  const colorMatch = text.match(COLOR_WORD);
+  const color = colorMatch ? colorMatch[1] : undefined;
+
+  const listMatch =
+    text.match(/\b(?:agreg[áa]|sum[áa]|anot[áa]|add)\s+a\s+([^\s,?.!]+)/i) ||
+    text.match(/\ba\s+(Traer|Hacer|Hoy|Inbox|Listo|Haciendo)\b/i);
+  const listHint = listMatch?.[1]?.replace(/[.,;:]+$/, "") || undefined;
+
+  const said =
+    text.match(/\b(?:que\s+diga|que\s+dice|titulad[oa]|llamad[oa])\s+["«“']?([^"»”'\n.?!]+)/i)?.[1] ||
+    text.match(/["«“]([^"»”]+)["»”]/)?.[1] ||
+    "";
+
+  let title = said.trim();
+  if (!title) {
+    const clauses = text
+      .split(/[?!.]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const last = [...clauses].reverse().find((s) => /\b(agreg|sumá|suma |anot)/i.test(s)) || text;
+    let rest = stripLead(
+      last,
+      /^(che[, ]+)?(porfa[, ]+)?(agregá|agrega|sumá|suma|anotá|anota|add)\s+(una\s+)?(tarea|card|tarjeta)?\s*/i,
+    );
+    rest = rest.replace(/^a\s+[^\s,]+(\s+una\s+tarjeta)?\s*/i, "");
+    rest = rest.replace(/^una\s+tarjeta\s*/i, "");
+    rest = rest.replace(/\ben\s+(naranja|rojo|roja|azul|violeta|lila|amarillo|verde)\s*/i, "");
+    rest = rest.replace(/\bque\s+diga\s+/i, "");
+    title = rest.trim();
+  }
+  title = title.replace(/\s+/g, " ").replace(/^[«“"']|[»”"']$/g, "").trim();
+  if (!title) return null;
+  if (title.length > 80) title = title.slice(0, 80).trim();
+  return { title, listHint, color };
+}
+
 export function parseRaIntent(raw: string): RaIntent {
   const text = String(raw || "").trim();
   const lower = text.toLowerCase();
@@ -448,24 +505,9 @@ export function parseRaIntent(raw: string): RaIntent {
     return { type: "move", title: title || text, listHint };
   }
 
-  if (
-    includesAny(lower, [
-      "agregá",
-      "agrega",
-      "sumá",
-      "suma",
-      "anotá",
-      "anota",
-      "nueva tarea",
-      "nueva card",
-      "add ",
-    ])
-  ) {
-    const title = stripLead(
-      text,
-      /^(che[, ]+)?(porfa[, ]+)?(agregá|agrega|sumá|suma|anotá|anota|add)\s+(una\s+)?(tarea|card|tarjeta)?\s*/i,
-    );
-    return { type: "add", title: title || text };
+  const parsedAdd = parseAddCardFromChat(text);
+  if (parsedAdd) {
+    return { type: "add", title: parsedAdd.title, listHint: parsedAdd.listHint, color: parsedAdd.color };
   }
 
   return { type: "chat" };
@@ -661,6 +703,51 @@ export async function addRaCard(
   return mapRaCard(card);
 }
 
+export async function addRaCardNamed(
+  args: { title: string; listHint?: string; listId?: string; color?: string },
+  seat: RaSeat = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ board: RaBoard; line: string; did: "add" | "need-trello"; card?: RaCard }> {
+  const title = String(args.title || "").trim();
+  const creds = credsOrNull(seat);
+  if (!creds) {
+    return {
+      board: emptyRaBoard(),
+      line: title ? `${RA_MISSING_LINE} Te lo anoté en la lista.` : RA_MISSING_LINE,
+      did: "need-trello",
+    };
+  }
+  let board = await loadRaBoard(seat, fetchImpl);
+  if (!title) return { board, line: "¿Qué anoto?", did: "add" };
+  const named = args.listId
+    ? board.lists.find((l) => l.id === args.listId) || null
+    : args.listHint
+      ? matchList(board, args.listHint)
+      : null;
+  if (args.listHint && !named && !args.listId) {
+    return { board, line: `No encuentro la lista ${args.listHint}.`, did: "add" };
+  }
+  const list = named || inboxList(board);
+  if (!list) return { board, line: "Ra no tiene columnas.", did: "add" };
+  const card = await addRaCard(title, list.id, seat, fetchImpl);
+  const feel = parseFeelColor(args.color || "");
+  if (feel) {
+    try {
+      await colorRaCard(card.id, feel, seat, fetchImpl);
+    } catch {
+      // keep the card even if the color misses
+    }
+  }
+  board = await loadRaBoard(seat, fetchImpl);
+  const colorBit = feel ? `, ${FEEL_COLORS[feel].label}` : "";
+  return {
+    board,
+    line: `Anoté «${title}» en ${list.name}${colorBit}.`,
+    did: "add",
+    card,
+  };
+}
+
 export async function moveRaCard(
   cardId: string,
   listId: string,
@@ -820,11 +907,11 @@ export async function applyRaIntent(
     return { board, line: boardLine(board), did: intent.type };
   }
   if (intent.type === "add") {
-    const list = intent.listHint ? matchList(board, intent.listHint) : inboxList(board);
-    if (!list) return { board, line: "Ra no tiene columnas.", did: "add" };
-    await addRaCard(intent.title, list.id, seat, fetchImpl);
-    board = await loadRaBoard(seat, fetchImpl);
-    return { board, line: `Anoté «${intent.title}» en ${list.name}.`, did: "add" };
+    return addRaCardNamed(
+      { title: intent.title, listHint: intent.listHint, color: intent.color },
+      seat,
+      fetchImpl,
+    );
   }
   if (intent.type === "move") {
     const card = matchCard(board, intent.title);

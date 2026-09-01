@@ -91,6 +91,33 @@ export const DEFAULT_POMO_MINUTES = 25;
 export const COMPANION_DUE_EVENT = "mochi-companion-due";
 export const COMPANION_POMO_EVENT = "mochi-companion-pomo";
 export const COMPANION_OPEN_RA = "mochi-companion-open-ra";
+export const COMPANION_OPEN_APP = "mochi-companion-open-app";
+
+const MINIAPP_ALIASES: Record<string, RaAppId> = {
+  tomate: "pomo",
+  pomo: "pomo",
+  pomodoro: "pomo",
+  tomato: "pomo",
+  notas: "notas",
+  nota: "notas",
+  notes: "notas",
+  video: "video",
+  youtube: "video",
+  yt: "video",
+  ruido: "radio",
+  radio: "radio",
+  tareas: "boards",
+  boards: "boards",
+  ra: "boards",
+  tablero: "boards",
+};
+
+export function resolveMiniappId(raw: string): RaAppId | null {
+  const t = String(raw || "").trim().toLowerCase();
+  if (!t) return null;
+  if (MINIAPP_ALIASES[t]) return MINIAPP_ALIASES[t];
+  return (RA_APP_IDS as readonly string[]).includes(t) ? (t as RaAppId) : null;
+}
 
 export type PomoClock = {
   running: boolean;

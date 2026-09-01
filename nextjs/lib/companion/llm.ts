@@ -12,7 +12,19 @@ export type LlmPick = {
   model: string | null;
 };
 
-export type LlmChatMessage = { role: "system" | "user" | "assistant"; content: string };
+export type LlmChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  tool_calls?: unknown[];
+  tool_call_id?: string;
+  name?: string;
+};
+
+export type LlmToolCall = {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
 
 export const NIMBO_NAME = "Nimbo";
 
@@ -20,9 +32,11 @@ export const NIMBO_SOUL = `Sos Nimbo, el bicho oro y gris de las tareas.
 Hablás en español rioplatense (vos, che, dale). Corto. Pocas palabras.
 Katho es ella. Lulox es él. Juntos son Katho y Lulox, los dos.
 No uses lenguaje inclusivo. Nada de esas formas raras.
-Solo hacés tres cosas: el tablero Ra (listar, agregar, mover, marcar listo),
-arrancar y parar el tomate, y anotar una tarea en la lista.
-Si Ra no está, igual contestá y decí "Ra no está." El juego se conecta con la app Ra del dock de abajo.
+Usá las herramientas. Si te piden una tarjeta en Ra, llamá add_ra_card (lista y color si los dicen).
+Si preguntan qué hay en el tablero, llamá list_ra_board.
+Si piden tomate, notas, video, ruido o tareas, llamá open_miniapp.
+Si Ra no está, decí "Ra no está." No finjas que agregaste nada.
+Nunca contestes solo un saludo si te pidieron una tarea.
 No mandes recados, no pongas videos, no mandes a nadie a otro sitio.
 No digas que sos Grok ni Chano.`;
 
@@ -72,13 +86,28 @@ export function extractLlmText(payload: unknown): string {
   return "";
 }
 
-export function buildLlmRequest(args: { pick: LlmPick; messages: LlmChatMessage[] }): {
+export function buildLlmRequest(args: {
+  pick: LlmPick;
+  messages: LlmChatMessage[];
+  tools?: unknown[];
+  toolChoice?: "auto" | "required" | "none";
+}): {
   url: string;
   method: "POST";
   headers: Record<string, string>;
   body: Record<string, unknown>;
 } | null {
   if (args.pick.provider === "none" || !args.pick.apiKey || !args.pick.url) return null;
+  const body: Record<string, unknown> = {
+    model: args.pick.model,
+    messages: args.messages,
+    temperature: 0.6,
+    max_tokens: 280,
+  };
+  if (args.tools && args.tools.length) {
+    body.tools = args.tools;
+    body.tool_choice = args.toolChoice || "auto";
+  }
   return {
     url: args.pick.url,
     method: "POST",
@@ -86,12 +115,78 @@ export function buildLlmRequest(args: { pick: LlmPick; messages: LlmChatMessage[
       Authorization: `Bearer ${args.pick.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: {
-      model: args.pick.model,
-      messages: args.messages,
-      temperature: 0.6,
-      max_tokens: 280,
-    },
+    body,
+  };
+}
+
+export function parseToolArguments(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw !== "string") return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function extractLlmToolCalls(payload: unknown): LlmToolCall[] {
+  const data = payload as {
+    choices?: Array<{
+      message?: {
+        tool_calls?: Array<{
+          id?: string;
+          function?: { name?: string; arguments?: unknown };
+        }>;
+      };
+    }>;
+  };
+  const rows = data?.choices?.[0]?.message?.tool_calls;
+  if (!Array.isArray(rows)) return [];
+  const out: LlmToolCall[] = [];
+  for (const row of rows) {
+    const name = String(row?.function?.name || "").trim();
+    if (!name) continue;
+    out.push({
+      id: String(row.id || `call_${out.length + 1}`),
+      name,
+      arguments: parseToolArguments(row.function?.arguments),
+    });
+  }
+  return out;
+}
+
+export async function completeLlmRound(
+  messages: LlmChatMessage[],
+  args: {
+    env?: Record<string, string | undefined>;
+    fetchImpl?: typeof fetch;
+    tools?: unknown[];
+    toolChoice?: "auto" | "required" | "none";
+  } = {},
+): Promise<{ provider: LlmProviderId; text: string; toolCalls: LlmToolCall[]; rawMessage: unknown }> {
+  const env = args.env ?? process.env;
+  const fetchImpl = args.fetchImpl ?? fetch;
+  const pick = pickLlmProvider(env);
+  const req = buildLlmRequest({
+    pick,
+    messages,
+    tools: args.tools,
+    toolChoice: args.toolChoice,
+  });
+  if (!req) return { provider: "none", text: "", toolCalls: [], rawMessage: null };
+  const res = await fetchImpl(req.url, {
+    method: req.method,
+    headers: req.headers,
+    body: JSON.stringify(req.body),
+  });
+  if (!res.ok) return { provider: pick.provider, text: "", toolCalls: [], rawMessage: null };
+  const json = await res.json().catch(() => null);
+  return {
+    provider: pick.provider,
+    text: extractLlmText(json),
+    toolCalls: extractLlmToolCalls(json),
+    rawMessage: (json as { choices?: Array<{ message?: unknown }> } | null)?.choices?.[0]?.message ?? json,
   };
 }
 
@@ -100,20 +195,15 @@ export async function completeLlmChat(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ provider: LlmProviderId; text: string }> {
-  const pick = pickLlmProvider(env);
-  const req = buildLlmRequest({ pick, messages });
-  if (!req) return { provider: "none", text: "" };
-  const res = await fetchImpl(req.url, {
-    method: req.method,
-    headers: req.headers,
-    body: JSON.stringify(req.body),
-  });
-  if (!res.ok) return { provider: pick.provider, text: "" };
-  const json = await res.json().catch(() => null);
-  return { provider: pick.provider, text: extractLlmText(json) };
+  const round = await completeLlmRound(messages, { env, fetchImpl });
+  return { provider: round.provider, text: round.text };
 }
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
+
+export function isOnlyCannedRaGreeting(reply: string): boolean {
+  return /^hola\.?\s*ra está acá\.?$/i.test(String(reply || "").trim());
+}
 
 export function localNimboReply(userText: string, boardLine?: string): string {
   const t = userText.toLowerCase();
@@ -125,15 +215,15 @@ export function localNimboReply(userText: string, boardLine?: string): string {
     }
     return "Arranqué el tomate.";
   }
+  if (/\b(agreg|sumá|suma|nueva|anot|recordame|tarjeta)\b/.test(t)) {
+    return boardLine || "Anotado.";
+  }
   if (/\b(hola|holis|buenas)\b/.test(t)) {
     return missing ? "Hola. Ra no está." : "Hola. Ra está acá.";
   }
   if (/\b(gracias|graciasche)\b/.test(t)) return "De nada.";
   if (/\b(qué hay|que hay|tareas|tablero|ra)\b/.test(t)) {
     return boardLine || "Ra. Decime y lo anoto.";
-  }
-  if (/\b(agreg|sumá|suma|nueva|anot|recordame)\b/.test(t)) {
-    return boardLine || "Anotado.";
   }
   if (/\b(listo|done|terminé|termine)\b/.test(t)) return boardLine || "Listo.";
   if (/\b(mové|move|pasa)\b/.test(t)) return boardLine || "Movido.";
@@ -143,6 +233,6 @@ export function localNimboReply(userText: string, boardLine?: string): string {
 export function nimboSystemMessages(boardLine?: string): LlmChatMessage[] {
   const extra = boardLine
     ? `\nTablero Ra ahora:\n${boardLine}`
-    : "\nRa no está. Igual contestá. Solo Ra, tomate y la lista.";
+    : "\nRa no está. Igual contestá. Si te piden una tarjeta, llamá add_ra_card: la herramienta dice si Ra no está.";
   return [{ role: "system", content: `${NIMBO_SOUL}${extra}` }];
 }

@@ -30,6 +30,7 @@ import {
   mascotDrawTransform,
   prefetchFacingSprites,
 } from "@/lib/companion/star-eye";
+import { togglePetBubble } from "@/lib/companion/desk";
 
 type CompanionPetProps = {
   working: boolean;
@@ -105,6 +106,7 @@ export function CompanionWanderer({
   biasRef.current = bias ?? null;
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [, setTick] = useState(0);
+  const [bubbleOpen, setBubbleOpen] = useState(true);
   const bounds = useBounds(host);
 
   useEffect(() => {
@@ -162,7 +164,10 @@ export function CompanionWanderer({
       // ignore
     }
     const result = endDrag(mascot, bounds, scale);
-    if (result === "click") onClick?.();
+    if (result === "click") {
+      setBubbleOpen((open) => togglePetBubble(open));
+      onClick?.();
+    }
     setTick((n) => (n + 1) % 1_000_000);
   }
 
@@ -195,6 +200,7 @@ export function CompanionWanderer({
                 : "Mochi")
           }
           data-character={pack}
+          data-bubble-open={bubbleOpen ? "true" : "false"}
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
@@ -203,7 +209,7 @@ export function CompanionWanderer({
           <span className="mascot-sprite" style={{ transform: spriteOrientTransform(m.edge) }} data-edge={m.edge}>
             <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
           </span>
-          {bubble ? (
+          {bubble && bubbleOpen ? (
             <span className="mascot-bubble" data-bubble-placement={bubblePlacementForEdge(m.edge)} role="status">
               {bubble}
             </span>

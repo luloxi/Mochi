@@ -7,6 +7,7 @@ import { CompanionApps } from "@/components/companion/companion-apps";
 import { DeskWindow, usePhone } from "@/components/companion/companion-window";
 import {
   COMPANION_DUE_EVENT,
+  COMPANION_OPEN_APP,
   addTodoItem,
   applyNimboClock,
   dueLine,
@@ -413,6 +414,9 @@ export function CompanionSurface() {
       });
       const json = await res.json().catch(() => null);
       const reply = typeof json?.reply === "string" && json.reply.trim() ? json.reply.trim() : "Dale.";
+      if (typeof json?.openApp === "string" && json.openApp) {
+        window.dispatchEvent(new CustomEvent(COMPANION_OPEN_APP, { detail: { id: json.openApp } }));
+      }
       if (json?.did === "need-trello" && intent.type === "add") addTodoItem(intent.title);
       setNimboLines((prev) => [...prev, reply].slice(-12));
       setNimboLog((prev) =>

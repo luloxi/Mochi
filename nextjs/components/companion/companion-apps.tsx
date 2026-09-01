@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
+  COMPANION_OPEN_APP,
   COMPANION_OPEN_RA,
   RA_APPS,
   addTodoItem,
@@ -848,16 +849,25 @@ export function CompanionApps({
   }
 
   useEffect(() => {
-    const openHouse = () => {
-      setWins((prev) => openWindow(prev, "boards", APP_SEED.boards));
+    const launch = (id: RaAppId) => {
+      setWins((prev) => openWindow(prev, id, APP_SEED[id]));
       setOrder((prev) => {
-        const next: RaAppId[] = prev.filter((row) => row !== "boards");
-        next.push("boards");
+        const next: RaAppId[] = prev.filter((row) => row !== id);
+        next.push(id);
         return next;
       });
     };
+    const openHouse = () => launch("boards");
+    const onOpenApp = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id && RA_APPS.some((app) => app.id === id)) launch(id as RaAppId);
+    };
     window.addEventListener(COMPANION_OPEN_RA, openHouse);
-    return () => window.removeEventListener(COMPANION_OPEN_RA, openHouse);
+    window.addEventListener(COMPANION_OPEN_APP, onOpenApp);
+    return () => {
+      window.removeEventListener(COMPANION_OPEN_RA, openHouse);
+      window.removeEventListener(COMPANION_OPEN_APP, onOpenApp);
+    };
   }, []);
 
   function close(id: RaAppId) {

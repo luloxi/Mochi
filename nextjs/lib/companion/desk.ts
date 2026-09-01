@@ -90,3 +90,9 @@ export function bubbleAboveHead(args: {
   const lines = args.nimboLines || [];
   return shortBubble(lines.at(-1) || "dale");
 }
+
+/** Click opens or closes the globo. Independent of the chat window. */
+export function togglePetBubble(open: boolean): boolean {
+  return !open;
+}
+

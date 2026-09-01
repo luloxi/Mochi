@@ -14,6 +14,8 @@ import {
   nextMascotAlert,
   parseCompanionIntent,
   RA_APPS,
+  COMPANION_OPEN_APP,
+  resolveMiniappId,
   startPomodoro,
   tickCompanionDue,
 } from "./companion-core";
@@ -47,6 +49,7 @@ import {
   DESK_CHARACTERS,
   bubbleAboveHead,
   firstPaintViolations,
+  togglePetBubble,
 } from "./desk";
 import {
   companionSyncApi,
@@ -77,7 +80,17 @@ import {
   parseHouseShortcut,
   personFromMemberName,
 } from "./house";
-import { NIMBO_NAME, NIMBO_SOUL, extractLlmText, localNimboReply, pickLlmProvider } from "./llm";
+import {
+  NIMBO_NAME,
+  NIMBO_SOUL,
+  buildLlmRequest,
+  extractLlmText,
+  extractLlmToolCalls,
+  isOnlyCannedRaGreeting,
+  localNimboReply,
+  pickLlmProvider,
+} from "./llm";
+import { NIMBO_TOOLS, executeNimboTool, nimboToolChoiceFor, runNimboTurn } from "./nimbo-agent";
 import {
   RA_CONNECT_JARGON,
   RA_MISSING_LINE,
@@ -93,6 +106,7 @@ import {
   linkCardOnBoard,
   mapRaCard,
   moveCardOnBoard,
+  parseAddCardFromChat,
   parseRaIntent,
   readTrelloTokenFromCallback,
   sortedOpenCards,
@@ -1332,5 +1346,245 @@ describe("chat sits above the pets and behaves", () => {
       now: now + TYPING_FRESH_MS + 1,
     });
     assert.deepEqual((later.body as { typing: unknown }).typing, { katho: false, lulox: false });
+  });
+});
+
+const FLORES_PROMPT =
+  "Hola amigo, vos podes agregar tarjetas al tablero? Agrega a Traer una tarjeta en naranja que diga Flores";
+
+function fakeRaWorld() {
+  const lists = [
+    { id: "l-traer", name: "Traer", pos: 1 },
+    { id: "l-hacer", name: "Hacer", pos: 2 },
+  ];
+  const cards: Array<Record<string, unknown>> = [];
+  const labels: Array<{ id: string; name: string; color: string | null }> = [];
+  const urls: string[] = [];
+  const trelloFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.includes("/members")) return new Response(JSON.stringify([]), { status: 200 });
+    if (url.includes("/lists")) return new Response(JSON.stringify(lists), { status: 200 });
+    if (url.includes("/labels") && (!init || !init.method || init.method === "GET")) {
+      return new Response(JSON.stringify(labels), { status: 200 });
+    }
+    if (url.includes("/labels") && init?.method === "POST") {
+      const u = new URL(url);
+      const row = {
+        id: `lab-${labels.length + 1}`,
+        name: u.searchParams.get("name") || "",
+        color: u.searchParams.get("color"),
+      };
+      labels.push(row);
+      return new Response(JSON.stringify(row), { status: 200 });
+    }
+    if (url.includes("/cards?") && url.includes("filter=open") && (!init || !init.method || init.method === "GET")) {
+      return new Response(JSON.stringify(cards), { status: 200 });
+    }
+    if (url.includes("/cards?") && init?.method === "POST") {
+      const name = new URL(url).searchParams.get("name") || "x";
+      const idList = new URL(url).searchParams.get("idList") || "l-traer";
+      const card = { id: `c${cards.length + 1}`, name, idList, closed: false, pos: cards.length, labels: [] as typeof labels };
+      cards.push(card);
+      return new Response(JSON.stringify(card), { status: 200 });
+    }
+    if (url.includes("/cards/") && init?.method === "PUT") {
+      const id = url.split("/cards/")[1].split("?")[0].split("/")[0];
+      const u = new URL(url);
+      const card = cards.find((c) => c.id === id) as Record<string, unknown> | undefined;
+      if (card && u.searchParams.has("idLabels")) {
+        const lid = u.searchParams.get("idLabels");
+        const lab = labels.find((row) => row.id === lid);
+        card.labels = lab ? [lab] : [];
+      }
+      return new Response(JSON.stringify(card || {}), { status: 200 });
+    }
+    return new Response("no", { status: 404 });
+  }) as typeof fetch;
+  return { lists, cards, labels, urls, trelloFetch };
+}
+
+describe("nimbo tools + pet bubble toggle", () => {
+  it("parses add-card-to-list with Tano color and ships add_ra_card tool", () => {
+    const parsed = parseAddCardFromChat(FLORES_PROMPT);
+    assert.ok(parsed);
+    assert.match(parsed!.title, /Flores/i);
+    assert.match(parsed!.listHint || "", /Traer/i);
+    assert.match(parsed!.color || "", /naranja/i);
+    const names = NIMBO_TOOLS.map((row) => row.function.name);
+    assert.deepEqual(names, ["add_ra_card", "list_ra_board", "open_miniapp"]);
+    assert.equal(nimboToolChoiceFor(FLORES_PROMPT), "required");
+    const openai = pickLlmProvider({ OPENAI_API_KEY: "sk-test" });
+    assert.equal(openai.model, "gpt-4o-mini");
+    const req = buildLlmRequest({
+      pick: openai,
+      messages: [{ role: "user", content: FLORES_PROMPT }],
+      tools: NIMBO_TOOLS,
+      toolChoice: nimboToolChoiceFor(FLORES_PROMPT),
+    });
+    assert.ok(req);
+    assert.equal(req!.body.tool_choice, "required");
+    assert.ok(Array.isArray(req!.body.tools));
+    const calls = extractLlmToolCalls({
+      choices: [
+        {
+          message: {
+            tool_calls: [
+              {
+                id: "call_1",
+                function: {
+                  name: "add_ra_card",
+                  arguments: JSON.stringify({ title: "Flores", list: "Traer", color: "naranja" }),
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].name, "add_ra_card");
+    assert.equal(calls[0].arguments.title, "Flores");
+    assert.equal(calls[0].arguments.list, "Traer");
+    assert.equal(calls[0].arguments.color, "naranja");
+    assert.equal(resolveMiniappId("tomate"), "pomo");
+    assert.equal(resolveMiniappId("tareas"), "boards");
+    assert.equal(resolveMiniappId("ruido"), "radio");
+  });
+
+  it("Nimbo tool-call adds Flores to Traer in naranja and does not answer only Ra está acá", async () => {
+    const world = fakeRaWorld();
+    const env = { TRELLO_API_KEY: "k", OPENAI_API_KEY: "sk-test" };
+    const seat = { token: "user-seat-token", env };
+    let llmRounds = 0;
+    const llmFetch: typeof fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      llmRounds += 1;
+      const body = JSON.parse(String(init?.body || "{}")) as { messages?: Array<{ role?: string }> };
+      const hasTool = (body.messages || []).some((row) => row.role === "tool");
+      if (!hasTool) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_add",
+                      type: "function",
+                      function: {
+                        name: "add_ra_card",
+                        arguments: JSON.stringify({ title: "Flores", list: "Traer", color: "naranja" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "Listo. Flores en Traer, naranja." } }],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const executed = await executeNimboTool(
+      { id: "call_add", name: "add_ra_card", arguments: { title: "Flores", list: "Traer", color: "naranja" } },
+      seat,
+      world.trelloFetch,
+    );
+    assert.match(executed.line, /Flores/);
+    assert.match(executed.line, /Traer/);
+    assert.match(executed.line, /naranja/);
+    assert.equal(executed.board?.cards[0]?.name, "Flores");
+    assert.equal(executed.board?.cards[0]?.idList, "l-traer");
+    assert.equal(executed.board?.cards[0]?.feel, "orange");
+
+    const world2 = fakeRaWorld();
+    const turn = await runNimboTurn({
+      text: FLORES_PROMPT,
+      seat,
+      env,
+      fetchImpl: world2.trelloFetch,
+      llmFetch,
+    });
+    assert.ok(turn.usedTools.includes("add_ra_card"));
+    assert.equal(turn.did, "add");
+    assert.ok(llmRounds >= 1);
+    assert.equal(isOnlyCannedRaGreeting(turn.reply), false);
+    assert.notEqual(turn.reply.trim(), "Hola. Ra está acá.");
+    assert.match(turn.reply, /Flores|Traer|naranja|Anoté/i);
+    assert.equal(turn.board.cards.some((c) => c.name === "Flores" && c.idList === "l-traer"), true);
+    assert.equal(turn.board.cards.find((c) => c.name === "Flores")?.feel, "orange");
+    assert.equal(localNimboReply(FLORES_PROMPT, "Hacer: pan").trim() === "Hola. Ra está acá.", false);
+  });
+
+  it("if the model only greets, Nimbo still adds the card instead of Ra está acá", async () => {
+    const world = fakeRaWorld();
+    const env = { TRELLO_API_KEY: "k", OPENAI_API_KEY: "sk-test" };
+    const seat = { token: "user-seat-token", env };
+    const llmFetch: typeof fetch = (async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "Hola. Ra está acá." } }] }), {
+        status: 200,
+      })) as typeof fetch;
+    const turn = await runNimboTurn({
+      text: FLORES_PROMPT,
+      seat,
+      env,
+      fetchImpl: world.trelloFetch,
+      llmFetch,
+    });
+    assert.ok(turn.usedTools.includes("add_ra_card"));
+    assert.equal(isOnlyCannedRaGreeting(turn.reply), false);
+    assert.notEqual(turn.reply.trim(), "Hola. Ra está acá.");
+    assert.match(turn.reply, /Flores/);
+    assert.equal(turn.board.cards[0]?.feel, "orange");
+  });
+
+  it("unconnected Ra says so instead of pretending", async () => {
+    const turn = await runNimboTurn({
+      text: FLORES_PROMPT,
+      seat: { token: null, env: { TRELLO_API_KEY: "k" } },
+      env: { TRELLO_API_KEY: "k" },
+    });
+    assert.match(turn.reply, /Ra no está/);
+    assert.equal(turn.board.configured, false);
+    assert.equal(turn.did, "need-trello");
+  });
+
+  it("pet click toggles the bubble; placement stays horizontal and near the pet", () => {
+    assert.equal(togglePetBubble(true), false);
+    assert.equal(togglePetBubble(false), true);
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pet = readFileSync(join(here, "../../components/companion/companion-pet.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    const agentRoute = readFileSync(join(here, "../../app/api/companion/agent/route.ts"), "utf8");
+    assert.match(pet, /togglePetBubble/);
+    assert.match(pet, /setBubbleOpen/);
+    assert.match(pet, /data-bubble-open/);
+    assert.match(pet, /bubble && bubbleOpen/);
+    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m\.edge\)\}/);
+    assert.match(css, /writing-mode:\s*horizontal-tb/);
+    assert.match(css, /width:\s*max-content/);
+    assert.match(css, /white-space:\s*nowrap/);
+    assert.match(css, /bottom:\s*calc\(100%/);
+    assert.match(css, /data-bubble-placement="beside-left"/);
+    assert.match(css, /data-bubble-placement="beside-right"/);
+    assert.match(css, /data-bubble-placement="below-feet"/);
+    assert.equal(COMPANION_OPEN_APP, "mochi-companion-open-app");
+    assert.match(apps, /COMPANION_OPEN_APP/);
+    assert.match(surface, /COMPANION_OPEN_APP/);
+    assert.match(agentRoute, /runNimboTurn/);
+    assert.equal(BUBBLE_PLACEMENT, "above-head");
+    assert.equal(BUBBLE_PLACEMENT_BY_EDGE.floor, "above-head");
+    assert.equal(BUBBLE_PLACEMENT_BY_EDGE.ceiling, "below-feet");
   });
 });
