@@ -271,8 +271,16 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   writing-mode: horizontal-tb;
   text-orientation: mixed;
   box-shadow: 3px 4px 0 var(--c-ink);
-  pointer-events: none;
   z-index: 3;
+}
+
+.mascot-alert {
+  pointer-events: none;
+}
+
+.mascot-bubble {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .mascot-bubble[data-bubble-placement="above-head"] {
