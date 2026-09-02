@@ -325,9 +325,9 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 }
 
 .mascot-talk {
-  position: absolute;
-  width: min(228px, 70vw);
-  max-height: min(220px, 42dvh);
+  position: fixed;
+  max-width: none;
+  max-height: min(200px, 36dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;

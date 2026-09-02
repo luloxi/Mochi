@@ -127,6 +127,9 @@ import {
   talkBalloonBoxStyle,
   throwKind,
   tickShimeji,
+  keepOffChrome,
+  DESK_CHROME_TOP,
+  DESK_CHROME_SALIR,
 } from "./shimeji-engine";
 import { handleCompanionTrelloRequest } from "./trello-api";
 import {
@@ -1325,7 +1328,14 @@ describe("chat sits above the pets and behaves", () => {
     assert.ok(above.left >= 8);
     const clipped = talkBalloonBoxStyle("beside-left", { left: 2, top: 80, size: 80 }, { width: 390, height: 844 });
     assert.ok(clipped.left >= 8, `balloon stayed on-screen, left=${clipped.left}`);
-    assert.ok(clipped.left + 160 <= 390);
+    assert.ok(clipped.left + clipped.width <= 390);
+    const walker = createMascot({ width: 390, height: 844 }, 0.6);
+    walker.x = 300;
+    walker.y = 40;
+    keepOffChrome(walker, { width: 390, height: 844 }, 0.6);
+    assert.ok(walker.y - 128 * 0.6 >= DESK_CHROME_TOP - 1);
+    assert.ok(walker.x + 128 * 0.6 <= 390 - 8 || walker.y - 128 * 0.6 >= DESK_CHROME_TOP);
+    assert.ok(DESK_CHROME_SALIR >= 100);
   });
 
   it("composer autofocuses, log scrolls to the last line, and fills the window", () => {

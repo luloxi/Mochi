@@ -197,8 +197,9 @@ function setAnim(m: ShimejiMascot, state: ShimejiState, animation: string) {
 }
 
 /** Top chrome (Salir, leave, faces). Pets must not walk there. */
-export const DESK_CHROME_TOP = 64;
-export const DESK_CHROME_SIDE = 8;
+export const DESK_CHROME_TOP = 96;
+export const DESK_CHROME_SIDE = 16;
+export const DESK_CHROME_SALIR = 120;
 
 export function edgeBounds(bounds: Bounds, scale: number) {
   const size = SPRITE_SIZE * scale;
@@ -211,6 +212,20 @@ export function edgeBounds(bounds: Bounds, scale: number) {
     floor: bounds.height,
     ceiling: size + top,
   };
+}
+
+/** Keep sprites out of Salir / leave / faces. Call after every walk tick. */
+export function keepOffChrome(m: ShimejiMascot, bounds: Bounds, scale: number) {
+  const size = SPRITE_SIZE * scale;
+  const minY = size + DESK_CHROME_TOP;
+  if (m.y < minY) m.y = minY;
+  if (m.x < DESK_CHROME_SIDE) m.x = DESK_CHROME_SIDE;
+  const maxX = Math.max(DESK_CHROME_SIDE, bounds.width - size - DESK_CHROME_SIDE);
+  if (m.x > maxX) m.x = maxX;
+  const salirLeft = bounds.width - DESK_CHROME_SALIR;
+  if (m.x + size > salirLeft && m.y - size < DESK_CHROME_TOP) {
+    m.y = minY;
+  }
 }
 
 /** Button stays unrotated. Canvas sprite orients feet toward the current edge. */
@@ -238,11 +253,11 @@ export function talkBalloonBoxStyle(
   placement: BubblePlacement,
   box: { left: number; top: number; size: number },
   view: { width: number; height: number } = { width: 390, height: 844 },
-): { left: number; top: number; transform: string } {
+): { left: number; top: number; transform: string; width: number } {
   const gap = 4;
   const pad = 8;
-  const w = Math.min(228, Math.max(160, view.width * 0.7));
-  const h = Math.min(220, view.height * 0.42);
+  const w = Math.min(200, Math.max(152, view.width - pad * 2));
+  const h = Math.min(200, view.height * 0.36);
   let left = 0;
   let top = 0;
   if (placement === "beside-right") {
@@ -262,7 +277,7 @@ export function talkBalloonBoxStyle(
   const maxTop = Math.max(pad, view.height - h - pad);
   left = Math.min(Math.max(pad, left), maxLeft);
   top = Math.min(Math.max(pad, top), maxTop);
-  return { left, top, transform: "none" };
+  return { left, top, transform: "none", width: w };
 }
 
 export function nearestEdge(x: number, y: number, bounds: Bounds, scale: number): DeskEdge {
@@ -799,6 +814,7 @@ export function tickShimeji(
   updateState(m, bounds, scale, perch);
   if (bias) applyWanderBias(m, bounds, scale, bias);
   resolveFlockCollisions();
+  keepOffChrome(m, bounds, scale);
   updateAnimation(m);
 }
 
