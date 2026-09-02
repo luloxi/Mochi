@@ -42,6 +42,7 @@ import {
   parseAppAgentIntent,
   parseNimboIntent,
   roleForPetClick,
+  toggleOpenChat,
 } from "./chats";
 import {
   BUBBLE_PLACEMENT,
@@ -123,6 +124,7 @@ import {
   endDrag,
   promoteDrag,
   spriteUrl,
+  talkBalloonBoxStyle,
   throwKind,
   tickShimeji,
 } from "./shimeji-engine";
@@ -809,7 +811,7 @@ describe("dock launches apps, Nimbo click is chat", () => {
     const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
     const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
     const clickNimbo = surface.slice(surface.indexOf("function clickNimbo"), surface.indexOf("function closeTalk"));
-    assert.match(clickNimbo, /setOpenChat\("nimbo"\)/);
+    assert.match(clickNimbo, /toggleOpenChat\(cur, "nimbo"\)/);
     assert.doesNotMatch(clickNimbo, /COMPANION_OPEN_RA|pick\(|setOrder|data-dock-app/);
     assert.match(apps, /data-app-dock/);
     assert.match(apps, /data-dock-app/);
@@ -1304,14 +1306,19 @@ describe("chat sits above the pets and behaves", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
     const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    const pet = readFileSync(join(here, "../../components/companion/companion-pet.tsx"), "utf8");
     const overlay = /\.companion-overlay\s*\{[^}]*z-index:\s*(\d+)/.exec(css);
-    const talk = /\.talk-window\s*\{[^}]*z-index:\s*(\d+)/.exec(css);
-    assert.ok(overlay && talk);
-    assert.ok(Number(talk![1]) > Number(overlay![1]));
-    const phone = /@media \(max-width: 699px\)[\s\S]*?\.talk-window[\s\S]*?z-index:\s*(\d+)/.exec(css);
-    assert.ok(phone && Number(phone[1]) > Number(overlay![1]));
-    const seed = /TALK_SEED[^;]*z:\s*(\d+)/.exec(surface);
-    assert.ok(seed && Number(seed[1]) > Number(overlay![1]));
+    const follow = /\.companion-overlay:has\(\.mascot-talk\)\s*\{[^}]*z-index:\s*(\d+)/.exec(css);
+    assert.ok(overlay && follow);
+    assert.ok(Number(follow![1]) > Number(overlay![1]));
+    assert.match(pet, /talkBalloonBoxStyle/);
+    assert.match(pet, /className="mascot-talk"/);
+    assert.match(surface, /toggleOpenChat/);
+    assert.equal(toggleOpenChat("nimbo", "nimbo"), null);
+    assert.equal(toggleOpenChat(null, "nimbo"), "nimbo");
+    const above = talkBalloonBoxStyle("above-head", { left: 100, top: 200, size: 80 });
+    assert.equal(above.top, 196);
+    assert.match(above.transform, /-100%/);
   });
 
   it("composer autofocuses, log scrolls to the last line, and fills the window", () => {
@@ -1602,18 +1609,18 @@ describe("nimbo tools + pet bubble toggle", () => {
     const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
     const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
     const agentRoute = readFileSync(join(here, "../../app/api/companion/agent/route.ts"), "utf8");
-    assert.match(pet, /togglePetBubble/);
     assert.match(pet, /setBubbleOpen/);
     assert.match(pet, /data-pet-globo/);
     assert.match(pet, /data-phone-tap-opens-chat/);
     assert.match(pet, /phone \? 28 : 5/);
-    assert.match(pet, /if \(phone\)/);
+    assert.match(pet, /onClick\?\.\(\)/);
+    assert.match(pet, /className="mascot-talk"/);
+    assert.match(pet, /talkBalloonBoxStyle/);
     assert.match(css, /\.mascot-bubble[\s\S]*pointer-events:\s*auto/);
-    assert.match(pet, /setBubbleOpen\(\(open\) => togglePetBubble\(open\)\)/);
-    assert.doesNotMatch(pet, /result === "click"[\s\S]{0,80}onClick\?\.\(\)/);
+    assert.match(css, /\.mascot-talk/);
     assert.match(pet, /data-bubble-open/);
-    assert.match(pet, /bubble && bubbleOpen/);
-    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m.edge, box.top\)\}/);
+    assert.match(pet, /bubble && bubbleOpen && !talk/);
+    assert.match(pet, /data-bubble-placement=\{bubblePlacementForEdge\(m.edge, box.top/);
     assert.match(css, /writing-mode:\s*horizontal-tb/);
     assert.match(css, /width:\s*max-content/);
     assert.match(css, /white-space:\s*nowrap/);

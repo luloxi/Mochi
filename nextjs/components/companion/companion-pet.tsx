@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import {
   PREFETCH_SPRITE_KEYS,
   SPRITE_SIZE,
@@ -8,6 +8,7 @@ import {
   beginDragPending,
   bubblePlacementForEdge,
   createMascot,
+  talkBalloonBoxStyle,
   createWorkingMascot,
   endDrag,
   mascotDrawBox,
@@ -30,7 +31,6 @@ import {
   mascotDrawTransform,
   prefetchFacingSprites,
 } from "@/lib/companion/star-eye";
-import { togglePetBubble } from "@/lib/companion/desk";
 import { usePhone } from "@/components/companion/companion-window";
 
 type CompanionPetProps = {
@@ -46,6 +46,7 @@ type CompanionPetProps = {
   bubble?: string | null;
   togetherMode?: "together" | "separate";
   togetherAction?: string;
+  talk?: ReactNode;
 };
 
 function useBounds(node: HTMLElement | null): Bounds {
@@ -100,6 +101,7 @@ export function CompanionWanderer({
   bubble = null,
   togetherMode,
   togetherAction,
+  talk = null,
 }: CompanionPetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mascotRef = useRef<ShimejiMascot | null>(null);
@@ -167,13 +169,9 @@ export function CompanionWanderer({
     }
     const result = endDrag(mascot, bounds, scale);
     if (result === "click") {
-      if (phone) {
-        // Celu: tap al pet abre el chat. No el baile globo/chat de desktop.
-        setBubbleOpen(true);
-        onClick?.();
-      } else {
-        setBubbleOpen((open) => togglePetBubble(open));
-      }
+      // Tap/click al pet abre o cierra la conversación pegada a la cabeza.
+      setBubbleOpen(true);
+      onClick?.();
     }
     setTick((n) => (n + 1) % 1_000_000);
   }
@@ -217,7 +215,7 @@ export function CompanionWanderer({
           <span className="mascot-sprite" style={{ transform: spriteOrientTransform(m.edge) }} data-edge={m.edge}>
             <MochiCanvas spriteKey={m.spriteKey} facingRight={m.facingRight} pack={pack} />
           </span>
-          {bubble && bubbleOpen ? (
+          {bubble && bubbleOpen && !talk ? (
             <span
               className="mascot-bubble"
               data-bubble-placement={bubblePlacementForEdge(m.edge, box.top)}
@@ -240,6 +238,20 @@ export function CompanionWanderer({
             </span>
           ) : null}
         </button>
+      ) : null}
+      {m && talk ? (
+        <div
+          className="mascot-talk"
+          data-talk-window
+          data-talk-never-hide="true"
+          data-pack={pack}
+          data-bubble-placement={bubblePlacementForEdge(m.edge, box.top, 200)}
+          style={talkBalloonBoxStyle(bubblePlacementForEdge(m.edge, box.top, 200), box)}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+        >
+          {talk}
+        </div>
       ) : null}
     </div>
   );
@@ -311,6 +323,9 @@ export function CompanionPair({
   onMochiClick,
   onLuloxClick,
   onNimboClick,
+  mochiTalk = null,
+  luloxTalk = null,
+  nimboTalk = null,
   scale = 0.72,
   showMochi = true,
   showLulox = true,
@@ -328,6 +343,9 @@ export function CompanionPair({
   onMochiClick: () => void;
   onLuloxClick: () => void;
   onNimboClick: () => void;
+  mochiTalk?: ReactNode;
+  luloxTalk?: ReactNode;
+  nimboTalk?: ReactNode;
   scale?: number;
   showMochi?: boolean;
   showLulox?: boolean;
@@ -369,6 +387,7 @@ export function CompanionPair({
           bubble={mochiBubble ?? (chat ? "che" : "hola")}
           togetherMode={view.mode}
           togetherAction={view.action}
+          talk={mochiTalk}
         />
       ) : null}
       {showNimbo ? (
@@ -382,6 +401,7 @@ export function CompanionPair({
           bias={null}
           extraClass={`is-nimbo${nimboWorking ? " is-play" : ""}`}
           bubble={nimboBubble ?? "dale"}
+          talk={nimboTalk}
         />
       ) : null}
       {showLulox ? (
@@ -398,6 +418,7 @@ export function CompanionPair({
           bubble={luloxBubble ?? (chat ? "miau" : "miau")}
           togetherMode={view.mode}
           togetherAction={view.action}
+          talk={luloxTalk}
         />
       ) : null}
     </div>

@@ -215,12 +215,34 @@ export function spriteOrientTransform(edge: DeskEdge): string {
   return "none";
 }
 
-export function bubblePlacementForEdge(edge: DeskEdge, top = Number.POSITIVE_INFINITY): BubblePlacement {
+export function bubblePlacementForEdge(
+  edge: DeskEdge,
+  top = Number.POSITIVE_INFINITY,
+  headroom = 56,
+): BubblePlacement {
   if (edge === "left") return "beside-right";
   if (edge === "right") return "beside-left";
   if (edge === "ceiling") return "below-feet";
-  if (top < 56) return "below-feet";
+  if (top < headroom) return "below-feet";
   return "above-head";
+}
+
+/** Pixel box of a speech balloon so it sits on the head, not across the room. */
+export function talkBalloonBoxStyle(
+  placement: BubblePlacement,
+  box: { left: number; top: number; size: number },
+): { left: number; top: number; transform: string } {
+  const gap = 4;
+  if (placement === "beside-right") {
+    return { left: box.left + box.size + gap, top: box.top + box.size / 2, transform: "translate(0, -50%)" };
+  }
+  if (placement === "beside-left") {
+    return { left: box.left - gap, top: box.top + box.size / 2, transform: "translate(-100%, -50%)" };
+  }
+  if (placement === "below-feet") {
+    return { left: box.left + box.size / 2, top: box.top + box.size + gap, transform: "translate(-50%, 0)" };
+  }
+  return { left: box.left + box.size / 2, top: box.top - gap, transform: "translate(-50%, -100%)" };
 }
 
 export function nearestEdge(x: number, y: number, bounds: Bounds, scale: number): DeskEdge {

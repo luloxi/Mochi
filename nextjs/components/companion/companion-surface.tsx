@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { CompanionPair } from "@/components/companion/companion-pet";
 import { CompanionLogin } from "@/components/companion/companion-login";
 import { CompanionApps } from "@/components/companion/companion-apps";
-import { DeskWindow, usePhone } from "@/components/companion/companion-window";
 import {
   COMPANION_DUE_EVENT,
   COMPANION_OPEN_APP,
@@ -21,7 +20,7 @@ import {
   type PrivateMsg,
 } from "@/lib/companion/companion-core";
 import { type CompanionAuthSession } from "@/lib/companion/auth";
-import { CHAT_WINDOWS, localHelpReply, parseNimboIntent, roleForPetClick } from "@/lib/companion/chats";
+import { CHAT_WINDOWS, localHelpReply, parseNimboIntent, roleForPetClick, toggleOpenChat } from "@/lib/companion/chats";
 import {
   RA_MISSING_LINE,
   archiveCardOnBoard,
@@ -47,14 +46,11 @@ import {
   type PresenceView,
 } from "@/lib/companion/presence";
 import { bubbleAboveHead } from "@/lib/companion/desk";
-import { moveWindow, resizeWindow, type LiveWindow } from "@/lib/companion/windows";
 
 type TalkMsg = { id: string; from: "me" | "them"; content: string };
 type OpenChat = "human" | "nimbo" | "help" | null;
 
 const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], members: [], configured: false };
-/** Chat sits ABOVE the pets (pet overlay is z 160). Pets stay above dock and board. */
-const TALK_SEED: LiveWindow = { id: "talk", x: 72, y: 56, w: 320, h: 380, z: 420 };
 
 function PresenceFace({
   face,
@@ -110,6 +106,73 @@ function PresenceFace({
   );
 }
 
+
+function PetTalk({
+  lines,
+  empty,
+  typing = false,
+  draft,
+  onDraft,
+  onSend,
+  aria,
+  logRef,
+  inputRef,
+}: {
+  lines: { id: string; from: string; content: string }[];
+  empty: string;
+  typing?: boolean;
+  draft: string;
+  onDraft: (value: string) => void;
+  onSend: () => void;
+  aria: string;
+  logRef: RefObject<HTMLDivElement | null>;
+  inputRef: RefObject<HTMLInputElement | null>;
+}) {
+  return (
+    <div className="talk-body">
+      <div className="talk-log" ref={logRef} data-talk-log>
+        {lines.length === 0 ? (
+          <p className="talk-empty">{empty}</p>
+        ) : (
+          lines.map((row) => (
+            <p key={row.id} className={`talk-line from-${row.from}`}>
+              {row.content}
+            </p>
+          ))
+        )}
+        {typing ? (
+          <p className="talk-line from-them talk-typing" data-talk-typing aria-label="escribiendo">
+            <span className="talk-dot" />
+            <span className="talk-dot" />
+            <span className="talk-dot" />
+          </p>
+        ) : null}
+      </div>
+      <form
+        className="talk-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSend();
+        }}
+      >
+        <input
+          value={draft}
+          onChange={(event) => onDraft(event.target.value)}
+          placeholder="…"
+          aria-label={aria}
+          autoComplete="off"
+          autoFocus
+          data-talk-input
+          ref={inputRef}
+        />
+        <button type="submit" disabled={!draft.trim()}>
+          ok
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export function CompanionSurface() {
   const [auth, setAuth] = useState<CompanionAuthSession | null | undefined>(undefined);
   const seat = auth?.personId ?? null;
@@ -140,8 +203,6 @@ export function CompanionSurface() {
   const [mascotAlert, setMascotAlert] = useState<string | null>(null);
   const [pomoOn, setPomoOn] = useState(false);
   const [phoneFoco, setPhoneFoco] = useState(false);
-  const [talkPos, setTalkPos] = useState<LiveWindow>(TALK_SEED);
-  const phone = usePhone();
   const seenDmRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -488,28 +549,23 @@ export function CompanionSurface() {
   const pairLog = privateChat.slice(-12);
   const other = seat ? otherPerson(seat) : null;
   const otherTint = other === "katho" ? CHAT_WINDOWS.mochi : CHAT_WINDOWS.lulox;
-  const nimboTint = CHAT_WINDOWS.nimbo;
 
   function clickMochi() {
     if (!seat) return;
-    setOpenChat(roleForPetClick(seat, "mochi"));
-    setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }));
+    setOpenChat((cur) => toggleOpenChat(cur, roleForPetClick(seat, "mochi")));
   }
   function clickLulox() {
     if (!seat) return;
-    setOpenChat(roleForPetClick(seat, "lulox"));
-    setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }));
+    setOpenChat((cur) => toggleOpenChat(cur, roleForPetClick(seat, "lulox")));
   }
   function clickNimbo() {
     if (!seat) return;
-    setOpenChat("nimbo");
-    setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }));
+    setOpenChat((cur) => toggleOpenChat(cur, "nimbo"));
   }
   function closeTalk() {
     setOpenChat(null);
   }
 
-  const ownTint = seat === "katho" ? CHAT_WINDOWS.mochi : CHAT_WINDOWS.lulox;
   const deskMode = phoneFoco ? "foco" : "desk";
 
   useEffect(() => {
@@ -530,6 +586,61 @@ export function CompanionSurface() {
       window.clearTimeout(t);
     };
   }, [openChat]);
+
+
+  const humanLines = pairLog.map((row) => ({
+    id: row.id,
+    from: row.from === seat ? "me" : "them",
+    content: row.content,
+  }));
+  const humanTalkNode =
+    openChat === "human" && other && seat ? (
+      <PetTalk
+        lines={humanLines}
+        empty="…"
+        typing={otherTyping}
+        draft={draft}
+        onDraft={(value) => {
+          setDraft(value);
+          pingTyping();
+        }}
+        onSend={() => handleSend("human")}
+        aria={`Mensaje para ${otherTint.label}`}
+        logRef={logRef}
+        inputRef={inputRef}
+      />
+    ) : null;
+  const nimboTalkNode =
+    openChat === "nimbo" ? (
+      <PetTalk
+        lines={nimboLog}
+        empty={board.configured ? "Ra." : RA_MISSING_LINE}
+        draft={draft}
+        onDraft={setDraft}
+        onSend={() => handleSend("nimbo")}
+        aria="Mensaje para Nimbo"
+        logRef={logRef}
+        inputRef={inputRef}
+      />
+    ) : null;
+  const helpTalkNode =
+    openChat === "help" && seat ? (
+      <PetTalk
+        lines={helpLog}
+        empty={localHelpReply("hola", seat)}
+        draft={draft}
+        onDraft={setDraft}
+        onSend={() => handleSend("help")}
+        aria="Pregunta de ayuda"
+        logRef={logRef}
+        inputRef={inputRef}
+      />
+    ) : null;
+  const talkNode =
+    openChat === "nimbo" ? nimboTalkNode : openChat === "help" ? helpTalkNode : openChat === "human" ? humanTalkNode : null;
+  const mochiTalk = seat && talkNode && roleForPetClick(seat, "mochi") === openChat ? talkNode : null;
+  const luloxTalk = seat && talkNode && roleForPetClick(seat, "lulox") === openChat ? talkNode : null;
+  const nimboTalk = openChat === "nimbo" ? talkNode : null;
 
   return (
     <div
@@ -570,6 +681,9 @@ export function CompanionSurface() {
         onMochiClick={clickMochi}
         onLuloxClick={clickLulox}
         onNimboClick={clickNimbo}
+        mochiTalk={mochiTalk}
+        luloxTalk={luloxTalk}
+        nimboTalk={nimboTalk}
         scale={0.6}
         showMochi
         showLulox
@@ -719,170 +833,6 @@ export function CompanionSurface() {
 
       {auth === null ? <CompanionLogin onSession={setAuth} /> : null}
 
-      {openChat === "human" && other && seat ? (
-        <DeskWindow
-          id="human"
-          title={otherTint.label}
-          phone={phone}
-          pos={{ ...talkPos, id: "human" }}
-          variant="talk"
-          className={`tint-${otherTint.colorName}`}
-          tint={otherTint.colorName}
-          onClose={closeTalk}
-          onFocus={() => setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }))}
-          onMove={(x, y) => setTalkPos((prev) => moveWindow([prev], prev.id, x, y)[0] || { ...prev, x, y })}
-          onResize={(next) => setTalkPos((prev) => resizeWindow([prev], prev.id, next)[0] || { ...prev, ...next })}
-        >
-          <div className="talk-body">
-            <div className="talk-log" ref={logRef} data-talk-log>
-              {pairLog.length === 0 ? (
-                <p className="talk-empty">…</p>
-              ) : (
-                pairLog.map((row) => (
-                  <p key={row.id} className={`talk-line from-${row.from === seat ? "me" : "them"}`}>
-                    {row.content}
-                  </p>
-                ))
-              )}
-              {otherTyping ? (
-                <p className="talk-line from-them talk-typing" data-talk-typing aria-label="escribiendo">
-                  <span className="talk-dot" />
-                  <span className="talk-dot" />
-                  <span className="talk-dot" />
-                </p>
-              ) : null}
-            </div>
-            <form
-              className="talk-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSend("human");
-              }}
-            >
-              <input
-                value={draft}
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  pingTyping();
-                }}
-                placeholder="…"
-                aria-label={`Mensaje para ${otherTint.label}`}
-                autoComplete="off"
-                autoFocus
-                data-talk-input
-                ref={inputRef}
-              />
-              <button type="submit" disabled={!draft.trim()}>
-                ok
-              </button>
-            </form>
-          </div>
-        </DeskWindow>
-      ) : null}
-
-      {openChat === "nimbo" ? (
-        <DeskWindow
-          id="nimbo"
-          title={nimboTint.label}
-          phone={phone}
-          pos={{ ...talkPos, id: "nimbo" }}
-          variant="talk"
-          className="tint-gold"
-          tint="gold"
-          onClose={closeTalk}
-          onFocus={() => setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }))}
-          onMove={(x, y) => setTalkPos((prev) => moveWindow([{ ...prev, id: "talk" }], "talk", x, y)[0] || { ...prev, x, y })}
-          onResize={(next) =>
-            setTalkPos((prev) => resizeWindow([{ ...prev, id: "talk" }], "talk", next)[0] || { ...prev, ...next })
-          }
-        >
-          <div className="talk-body">
-            <div className="talk-log" ref={logRef} data-talk-log>
-              {nimboLog.length === 0 ? (
-                <p className="talk-empty">{board.configured ? "Ra." : RA_MISSING_LINE}</p>
-              ) : (
-                nimboLog.map((row) => (
-                  <p key={row.id} className={`talk-line from-${row.from}`}>
-                    {row.content}
-                  </p>
-                ))
-              )}
-            </div>
-            <form
-              className="talk-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSend("nimbo");
-              }}
-            >
-              <input
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="…"
-                aria-label="Mensaje para Nimbo"
-                autoComplete="off"
-                autoFocus
-                data-talk-input
-                ref={inputRef}
-              />
-              <button type="submit" disabled={!draft.trim()}>
-                ok
-              </button>
-            </form>
-          </div>
-        </DeskWindow>
-      ) : null}
-
-      {openChat === "help" && seat ? (
-        <DeskWindow
-          id="help"
-          title="ayuda"
-          phone={phone}
-          pos={{ ...talkPos, id: "help" }}
-          variant="talk"
-          className={`tint-${ownTint.colorName}`}
-          tint={ownTint.colorName}
-          onClose={closeTalk}
-          onFocus={() => setTalkPos((prev) => ({ ...prev, z: prev.z + 1 }))}
-          onMove={(x, y) => setTalkPos((prev) => ({ ...prev, x: Math.max(8, x), y: Math.max(8, y) }))}
-          onResize={(next) => setTalkPos((prev) => ({ ...prev, ...next }))}
-        >
-          <div className="talk-body">
-            <div className="talk-log" ref={logRef} data-talk-log>
-              {helpLog.length === 0 ? (
-                <p className="talk-empty">{localHelpReply("hola", seat)}</p>
-              ) : (
-                helpLog.map((row) => (
-                  <p key={row.id} className={`talk-line from-${row.from}`}>
-                    {row.content}
-                  </p>
-                ))
-              )}
-            </div>
-            <form
-              className="talk-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSend("help");
-              }}
-            >
-              <input
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="…"
-                aria-label="Pregunta de ayuda"
-                autoComplete="off"
-                autoFocus
-                data-talk-input
-                ref={inputRef}
-              />
-              <button type="submit" disabled={!draft.trim()}>
-                ok
-              </button>
-            </form>
-          </div>
-        </DeskWindow>
-      ) : null}
     </div>
   );
 }

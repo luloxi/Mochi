@@ -202,6 +202,10 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   overflow: visible;
 }
 
+.companion-overlay:has(.mascot-talk) {
+  z-index: 430;
+}
+
 .companion-mascot,
 .companion-working-sprite {
   pointer-events: auto;
@@ -318,6 +322,47 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 
 .companion-mascot[data-pack="nimbo"] .mascot-bubble {
   background: #f6e4a4;
+}
+
+.mascot-talk {
+  position: absolute;
+  width: min(228px, 70vw);
+  max-height: min(220px, 42dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  z-index: 8;
+  border: 2px solid var(--c-ink);
+  border-radius: 16px 16px 16px 6px;
+  background: #fff;
+  box-shadow: 3px 4px 0 var(--c-ink);
+}
+
+.mascot-talk[data-pack="mochi"] {
+  background: #ffd6ee;
+}
+
+.mascot-talk[data-pack="lulox"] {
+  background: #c8f3ff;
+}
+
+.mascot-talk[data-pack="nimbo"] {
+  background: #f6e4a4;
+}
+
+.mascot-talk .talk-body {
+  min-height: 0;
+  max-height: min(220px, 42dvh);
+  padding: 8px;
+}
+
+.mascot-talk .talk-log {
+  max-height: 140px;
+}
+
+.mascot-talk[data-bubble-placement="above-head"] {
+  /* left/top come from talkBalloonBoxStyle — immediately on the head */
 }
 
 .mascot-alert {

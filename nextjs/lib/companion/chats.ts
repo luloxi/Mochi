@@ -131,6 +131,11 @@ export function roleForPetClick(seat: PersonId, pack: SpritePackId): PetClickRol
   return pack === "lulox" ? "human" : "help";
 }
 
+/** Same pet again closes the conversation balloon. */
+export function toggleOpenChat<T>(current: T | null, next: T): T | null {
+  return current === next ? null : next;
+}
+
 export type ClickLaunch = { kind: "chat"; chat: PetClickRole } | { kind: "app"; app: string };
 
 export function launchTargetFor(source: "nimbo" | "ra-pet" | "dock", appId?: string): ClickLaunch {
