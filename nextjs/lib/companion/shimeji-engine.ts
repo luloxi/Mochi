@@ -196,14 +196,20 @@ function setAnim(m: ShimejiMascot, state: ShimejiState, animation: string) {
   m.stateTimer = 0;
 }
 
+/** Top chrome (Salir, leave, faces). Pets must not walk there. */
+export const DESK_CHROME_TOP = 64;
+export const DESK_CHROME_SIDE = 8;
+
 export function edgeBounds(bounds: Bounds, scale: number) {
   const size = SPRITE_SIZE * scale;
+  const top = DESK_CHROME_TOP;
+  const side = DESK_CHROME_SIDE;
   return {
     size,
-    left: 0,
-    right: Math.max(0, bounds.width - size),
+    left: side,
+    right: Math.max(side, bounds.width - size - side),
     floor: bounds.height,
-    ceiling: size,
+    ceiling: size + top,
   };
 }
 
@@ -231,18 +237,32 @@ export function bubblePlacementForEdge(
 export function talkBalloonBoxStyle(
   placement: BubblePlacement,
   box: { left: number; top: number; size: number },
+  view: { width: number; height: number } = { width: 390, height: 844 },
 ): { left: number; top: number; transform: string } {
   const gap = 4;
+  const pad = 8;
+  const w = Math.min(228, Math.max(160, view.width * 0.7));
+  const h = Math.min(220, view.height * 0.42);
+  let left = 0;
+  let top = 0;
   if (placement === "beside-right") {
-    return { left: box.left + box.size + gap, top: box.top + box.size / 2, transform: "translate(0, -50%)" };
+    left = box.left + box.size + gap;
+    top = box.top + box.size / 2 - h / 2;
+  } else if (placement === "beside-left") {
+    left = box.left - gap - w;
+    top = box.top + box.size / 2 - h / 2;
+  } else if (placement === "below-feet") {
+    left = box.left + box.size / 2 - w / 2;
+    top = box.top + box.size + gap;
+  } else {
+    left = box.left + box.size / 2 - w / 2;
+    top = box.top - gap - h;
   }
-  if (placement === "beside-left") {
-    return { left: box.left - gap, top: box.top + box.size / 2, transform: "translate(-100%, -50%)" };
-  }
-  if (placement === "below-feet") {
-    return { left: box.left + box.size / 2, top: box.top + box.size + gap, transform: "translate(-50%, 0)" };
-  }
-  return { left: box.left + box.size / 2, top: box.top - gap, transform: "translate(-50%, -100%)" };
+  const maxLeft = Math.max(pad, view.width - w - pad);
+  const maxTop = Math.max(pad, view.height - h - pad);
+  left = Math.min(Math.max(pad, left), maxLeft);
+  top = Math.min(Math.max(pad, top), maxTop);
+  return { left, top, transform: "none" };
 }
 
 export function nearestEdge(x: number, y: number, bounds: Bounds, scale: number): DeskEdge {

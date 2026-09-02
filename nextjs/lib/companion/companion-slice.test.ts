@@ -943,8 +943,8 @@ describe("throw slow vs fast", () => {
     const scale = 1;
 
     const slow = createMascot(bounds, scale);
-    slow.x = 10;
-    slow.y = 150;
+    slow.x = 20;
+    slow.y = 220;
     promoteDrag(slow);
     slow.smoothedVelocityX = 2;
     slow.smoothedVelocityY = 1;
@@ -955,7 +955,7 @@ describe("throw slow vs fast", () => {
 
     const fast = createMascot(bounds, scale);
     fast.x = 80;
-    fast.y = 170;
+    fast.y = 230;
     promoteDrag(fast);
     fast.smoothedVelocityX = -22;
     fast.smoothedVelocityY = -6;
@@ -968,6 +968,9 @@ describe("throw slow vs fast", () => {
     assert.ok(fast.velocityY > vy0, "gravity pulls down");
     for (let i = 0; i < 10; i++) tickShimeji(fast, bounds, scale, null, null);
     assert.ok(fast.velocityY > 0 || fast.y > y0, "they fall");
+    fast.state = State.FALLING;
+    fast.throwMode = "bounce";
+    fast.y = 230;
     fast.x = 0;
     fast.velocityX = -16;
     tickShimeji(fast, bounds, scale, null, null);
@@ -1316,9 +1319,13 @@ describe("chat sits above the pets and behaves", () => {
     assert.match(surface, /toggleOpenChat/);
     assert.equal(toggleOpenChat("nimbo", "nimbo"), null);
     assert.equal(toggleOpenChat(null, "nimbo"), "nimbo");
-    const above = talkBalloonBoxStyle("above-head", { left: 100, top: 200, size: 80 });
-    assert.equal(above.top, 196);
-    assert.match(above.transform, /-100%/);
+    const above = talkBalloonBoxStyle("above-head", { left: 100, top: 200, size: 80 }, { width: 390, height: 844 });
+    assert.equal(above.transform, "none");
+    assert.ok(above.top >= 8);
+    assert.ok(above.left >= 8);
+    const clipped = talkBalloonBoxStyle("beside-left", { left: 2, top: 80, size: 80 }, { width: 390, height: 844 });
+    assert.ok(clipped.left >= 8, `balloon stayed on-screen, left=${clipped.left}`);
+    assert.ok(clipped.left + 160 <= 390);
   });
 
   it("composer autofocuses, log scrolls to the last line, and fills the window", () => {

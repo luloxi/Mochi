@@ -246,7 +246,7 @@ export function CompanionWanderer({
           data-talk-never-hide="true"
           data-pack={pack}
           data-bubble-placement={bubblePlacementForEdge(m.edge, box.top, 200)}
-          style={talkBalloonBoxStyle(bubblePlacementForEdge(m.edge, box.top, 200), box)}
+          style={talkBalloonBoxStyle(bubblePlacementForEdge(m.edge, box.top, 200), box, bounds)}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >

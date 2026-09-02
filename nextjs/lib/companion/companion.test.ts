@@ -28,6 +28,9 @@ import {
   SPRITE_BASE,
   State,
   bubblePlacementForEdge,
+  edgeBounds,
+  DESK_CHROME_TOP,
+  DESK_CHROME_SIDE,
 } from "./shimeji-engine";
 import {
   PERSONAS,
@@ -291,8 +294,9 @@ describe("shimeji perimeter + collision + snap", () => {
   const bounds = { width: 400, height: 300 };
   const scale = 1;
   const size = 128;
-  const right = bounds.width - size;
-  const ceiling = size;
+  const edges = edgeBounds(bounds, scale);
+  const right = edges.right;
+  const ceiling = edges.ceiling;
   const floor = bounds.height;
 
   it("continues from floor onto the right wall then the ceiling", () => {
@@ -302,6 +306,8 @@ describe("shimeji perimeter + collision + snap", () => {
     m.edge = "floor";
     startWalkingOnEdge(m, "floor", true);
     for (let i = 0; i < 8; i++) tickShimeji(m, bounds, scale, null, null);
+    assert.equal(edges.ceiling, size + DESK_CHROME_TOP);
+    assert.equal(edges.left, DESK_CHROME_SIDE);
     assert.equal(m.edge, "right");
     assert.equal(m.x, right);
     assert.ok(m.y < floor, `expected climb the wall, y=${m.y}`);
@@ -329,12 +335,12 @@ describe("shimeji perimeter + collision + snap", () => {
 
   it("continues from floor onto the left wall then the ceiling", () => {
     const m = createMascot(bounds, scale);
-    m.x = 2;
+    m.x = edges.left + 2;
     m.y = floor;
     startWalkingOnEdge(m, "floor", false);
     for (let i = 0; i < 8; i++) tickShimeji(m, bounds, scale, null, null);
     assert.equal(m.edge, "left");
-    assert.equal(m.x, 0);
+    assert.equal(m.x, edges.left);
     assert.ok(m.y < floor);
     m.y = ceiling + 2;
     startWalkingOnEdge(m, "left", false);
