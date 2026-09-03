@@ -47,36 +47,14 @@ import {
   type PresenceView,
 } from "@/lib/companion/presence";
 import { bubbleAboveHead } from "@/lib/companion/desk";
+import { openCompanionRoom, type RoomConn } from "@/lib/companion/room-client";
 
 type TalkMsg = { id: string; from: "me" | "them"; content: string };
 type OpenChat = "human" | "nimbo" | "help" | null;
 
 const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], members: [], configured: false };
 
-const SYNC_MS = 15_000;
-const SYNC_HIDDEN_MS = 60_000;
 const TRELLO_MS = 45_000;
-
-function startVisibilityInterval(visibleMs: number, hiddenMs: number, tick: () => void) {
-  let id = 0;
-  const arm = () => {
-    window.clearInterval(id);
-    const ms = document.visibilityState === "visible" ? visibleMs : hiddenMs;
-    if (ms <= 0) return;
-    id = window.setInterval(tick, ms);
-  };
-  tick();
-  arm();
-  const onVis = () => {
-    if (document.visibilityState === "visible") tick();
-    arm();
-  };
-  document.addEventListener("visibilitychange", onVis);
-  return () => {
-    window.clearInterval(id);
-    document.removeEventListener("visibilitychange", onVis);
-  };
-}
 
 function PresenceFace({
   face,
@@ -201,6 +179,8 @@ function PetTalk({
 
 export function CompanionSurface() {
   const [auth, setAuth] = useState<CompanionAuthSession | null | undefined>(undefined);
+  const [room, setRoom] = useState<{ url: string; ticket: string } | null>(null);
+  const roomRef = useRef<RoomConn | null>(null);
   const seat = auth?.personId ?? null;
   const [openChat, setOpenChat] = useState<OpenChat>(null);
   const [draft, setDraft] = useState("");
@@ -252,7 +232,12 @@ export function CompanionSurface() {
       try {
         const res = await fetch("/api/companion/auth/session", { credentials: "include" });
         const json = await res.json().catch(() => null);
-        if (!cancelled) setAuth(json?.session ?? null);
+        if (!cancelled) {
+          setAuth(json?.session ?? null);
+          const url = typeof json?.room?.url === "string" ? json.room.url : "";
+          const ticket = typeof json?.room?.ticket === "string" ? json.room.ticket : "";
+          setRoom(url && ticket ? { url, ticket } : null);
+        }
       } catch {
         if (!cancelled) setAuth(null);
       }
@@ -263,33 +248,38 @@ export function CompanionSurface() {
   }, []);
 
   useEffect(() => {
-    if (!auth) return;
-    let cancelled = false;
-    const pull = async () => {
-      try {
-        const res = await fetch("/api/companion/sync", { credentials: "include" });
-        const json = await res.json().catch(() => null);
-        if (cancelled || !json) return;
-        if (Array.isArray(json.dms)) setPrivateChat(json.dms);
-        if (json.presence) setPairPresence(json.presence);
-        if (json.typing) {
-          const them = seat === "katho" ? "lulox" : "katho";
-          setOtherTyping(json.typing[them] === true);
+    if (!auth || !room) return;
+    const conn = openCompanionRoom({
+      url: room.url,
+      ticket: room.ticket,
+      onState(state) {
+        if (Array.isArray(state.dms)) setPrivateChat(state.dms);
+        if (state.presence) setPairPresence(state.presence);
+        if (state.typing) {
+          const them = auth.personId === "katho" ? "lulox" : "katho";
+          setOtherTyping(state.typing[them] === true);
         }
-      } catch {
-        // keep last snapshot
-      }
-    };
-    const stop = startVisibilityInterval(SYNC_MS, SYNC_HIDDEN_MS, () => void pull());
+      },
+    });
+    roomRef.current = conn;
+    const beat = (status: PresenceStatus) => conn.send({ type: "presence", status });
+    beat(document.visibilityState === "visible" ? "present" : "idle-away");
+    const onVis = () => beat(document.visibilityState === "visible" ? "present" : "idle-away");
+    const onLeave = () => beat("close");
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", onLeave);
     return () => {
-      cancelled = true;
-      stop();
+      onLeave();
+      conn.close();
+      roomRef.current = null;
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", onLeave);
     };
-  }, [auth]);
+  }, [auth, room]);
 
   const pullBoard = useCallback(async () => {
     try {
-      const res = await fetch("/api/companion/trello", { credentials: "include" });
+      const res = await fetch("/api/companion/ra", { credentials: "include" });
       const json = await res.json().catch(() => null);
       if (!json) return;
       const next: RaBoard = {
@@ -319,7 +309,7 @@ export function CompanionSurface() {
     connectingRef.current = true;
     void (async () => {
       try {
-        const res = await fetch("/api/companion/trello", {
+        const res = await fetch("/api/companion/ra", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -370,32 +360,7 @@ export function CompanionSurface() {
     };
   }, [auth, pullBoard]);
 
-  useEffect(() => {
-    if (!auth) return;
-    const beat = (status: PresenceStatus) => {
-      void fetch("/api/companion/sync", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "presence", status }),
-      })
-        .then((res) => res.json())
-        .then((json) => {
-          if (json?.presence) setPairPresence(json.presence);
-        })
-        .catch(() => {});
-    };
-    beat(document.visibilityState === "visible" ? "present" : "idle-away");
-    const onVis = () => beat(document.visibilityState === "visible" ? "present" : "idle-away");
-    const onLeave = () => beat("close");
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("pagehide", onLeave);
-    return () => {
-      beat("close");
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("pagehide", onLeave);
-    };
-  }, [auth]);
+
 
   useEffect(() => {
     const tick = () => {
@@ -432,35 +397,17 @@ export function CompanionSurface() {
   }, [privateChat, seat]);
 
   async function logout() {
-    try {
-      await fetch("/api/companion/sync", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "presence", status: "logout" }),
-      });
-    } catch {
-      // still leave
-    }
+    roomRef.current?.send({ type: "presence", status: "logout" });
     await fetch("/api/companion/auth/logout", { method: "POST", credentials: "include" });
     setAuth(null);
+    setRoom(null);
     setOpenChat(null);
     setPhoneFoco(false);
   }
 
   function sendDm(text: string) {
     if (!seat) return;
-    void fetch("/api/companion/sync", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "dm", content: text }),
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        if (Array.isArray(json?.dms)) setPrivateChat(json.dms);
-      })
-      .catch(() => {});
+    roomRef.current?.send({ type: "dm", content: text });
   }
 
   async function sendHelp(text: string) {
@@ -554,12 +501,7 @@ export function CompanionSurface() {
     const now = Date.now();
     if (now - typingSentAt.current < 2000) return;
     typingSentAt.current = now;
-    void fetch("/api/companion/sync", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "typing" }),
-    }).catch(() => {});
+    roomRef.current?.send({ type: "typing" });
   }
 
   function handleSend(kind: OpenChat) {
@@ -744,7 +686,7 @@ export function CompanionSurface() {
           seat={auth.personId}
           authorizeUrl={authorizeUrl}
           onRaAdd={(title, listId) => {
-            void fetch("/api/companion/trello", {
+            void fetch("/api/companion/ra", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -763,7 +705,7 @@ export function CompanionSurface() {
           }}
           onRaMove={(cardId, listId, pos) => {
             setBoard((prev) => moveCardOnBoard(prev, cardId, listId, pos));
-            void fetch("/api/companion/trello", {
+            void fetch("/api/companion/ra", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -780,7 +722,7 @@ export function CompanionSurface() {
               .catch(() => void pullBoard());
           }}
           onRaDone={(cardId) => {
-            void fetch("/api/companion/trello", {
+            void fetch("/api/companion/ra", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -798,7 +740,7 @@ export function CompanionSurface() {
           }}
           onRaColor={(cardId, color: FeelColor) => {
             setBoard((prev) => colorCardOnBoard(prev, cardId, color));
-            void fetch("/api/companion/trello", {
+            void fetch("/api/companion/ra", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -807,7 +749,7 @@ export function CompanionSurface() {
           }}
           onRaArchive={(cardId) => {
             setBoard((prev) => archiveCardOnBoard(prev, cardId));
-            void fetch("/api/companion/trello", {
+            void fetch("/api/companion/ra", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -847,7 +789,7 @@ export function CompanionSurface() {
                     : patch.action === "check"
                       ? { action: "check", cardId: patch.cardId, itemId: patch.itemId, complete: patch.complete }
                       : { action: "link", cardId: patch.cardId, url: patch.url };
-            void fetch("/api/companion/trello", {
+            void fetch("/api/companion/ra", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -867,7 +809,14 @@ export function CompanionSurface() {
         />
       ) : null}
 
-      {auth === null ? <CompanionLogin onSession={setAuth} /> : null}
+      {auth === null ? (
+        <CompanionLogin
+          onSession={(session, nextRoom) => {
+            setAuth(session);
+            setRoom(nextRoom || null);
+          }}
+        />
+      ) : null}
 
     </div>
   );

@@ -20,7 +20,7 @@ type GsiOauth = {
 export function CompanionLogin({
   onSession,
 }: {
-  onSession: (session: CompanionAuthSession) => void;
+  onSession: (session: CompanionAuthSession, room?: { url: string; ticket: string } | null) => void;
 }) {
   const clientRef = useRef<{ requestAccessToken: () => void } | null>(null);
   const [ready, setReady] = useState(false);
@@ -53,7 +53,9 @@ export function CompanionLogin({
           const json = await res.json().catch(() => null);
           if (cancelled) return;
           if (json?.session) {
-            onSession(json.session);
+            const url = typeof json?.room?.url === "string" ? json.room.url : "";
+            const ticket = typeof json?.room?.ticket === "string" ? json.room.ticket : "";
+            onSession(json.session, url && ticket ? { url, ticket } : null);
             return;
           }
           if (json?.error === "denied") {

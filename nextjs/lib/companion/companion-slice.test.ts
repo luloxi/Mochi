@@ -19,6 +19,7 @@ import {
   startPomodoro,
   tickCompanionDue,
 } from "./companion-core";
+import { encodeRoomTicket, restoreRoomTicket } from "./room-ticket";
 import {
   COMPANION_GOOGLE_CLIENT_ID,
   KATHO_GOOGLE_EMAIL,
@@ -144,6 +145,18 @@ import {
 } from "./windows";
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres)\b/i;
+
+describe("room ticket", () => {
+  it("signs a short ticket the worker can trust", () => {
+    const session = createCompanionSession("kathonejo@gmail.com");
+    assert.ok(session);
+    const ticket = encodeRoomTicket(session, 1_000, "unit-secret");
+    const restored = restoreRoomTicket(ticket, "unit-secret", 1_000);
+    assert.equal(restored?.personId, "katho");
+    assert.equal(restoreRoomTicket(ticket, "other", 1_000), null);
+    assert.equal(restoreRoomTicket(ticket, "unit-secret", 1_000 + 13 * 60 * 60 * 1000), null);
+  });
+});
 
 describe("google allowlist + session", () => {
   it("maps the two emails to Katho/Mochi and Lulox ninja-cat; a third is denied", () => {
@@ -609,14 +622,19 @@ describe("fullscreen companion surface", () => {
     assert.match(css, /\.companion-login-card[\s\S]*z-index:\s*200/);
   });
 
-  it("companion polling is slow enough for the Vercel hobby cap", () => {
+  it("old poll URLs are dead static files; live desk uses the room socket", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
-    assert.match(surface, /const SYNC_MS = 15_000/);
-    assert.match(surface, /const SYNC_HIDDEN_MS = 60_000/);
-    assert.match(surface, /data-tareas-pane/);
-    assert.doesNotMatch(surface, /PRESENCE_MS/);
-    assert.doesNotMatch(surface, /setInterval\(\(\) => void pull\(\), 2500\)/);
+    const nextConfig = readFileSync(join(here, "../../next.config.mjs"), "utf8");
+    assert.match(surface, /openCompanionRoom/);
+    assert.doesNotMatch(surface, /\/api\/companion\/sync/);
+    assert.doesNotMatch(surface, /\/api\/companion\/trello/);
+    assert.match(surface, /\/api\/companion\/ra/);
+    assert.match(nextConfig, /companion-gone\.json/);
+    assert.match(nextConfig, /\/api\/companion\/sync/);
+    assert.ok(existsSync(join(here, "../../public/companion-gone.json")));
+    assert.ok(!existsSync(join(here, "../../app/api/companion/sync/route.ts")));
+    assert.ok(!existsSync(join(here, "../../app/api/companion/trello/route.ts")));
     const proxy = readFileSync(join(here, "../../proxy.ts"), "utf8");
     assert.match(proxy, /api\//);
     assert.match(proxy, /sprites\//);
@@ -700,7 +718,7 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.doesNotMatch(`${surface}\n${apps}`, /pega la clave/i);
     const trelloSrc = readFileSync(join(here, "trello.ts"), "utf8");
     const authSrc = readFileSync(join(here, "auth.ts"), "utf8");
-    const trelloRoute = readFileSync(join(here, "../../app/api/companion/trello/route.ts"), "utf8");
+    const trelloRoute = readFileSync(join(here, "../../app/api/companion/ra/route.ts"), "utf8");
     const blob = `${trelloSrc}\n${authSrc}\n${trelloRoute}\n${surface}\n${apps}`;
     assert.doesNotMatch(blob, /TRELLO_TOKEN\s*=\s*["'][^"']+["']/);
     assert.doesNotMatch(blob, /<iframe[^>]+trello/i);

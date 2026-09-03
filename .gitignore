@@ -1,5 +1,6 @@
 **/node_modules/
 **/dist/
+room/.wrangler/
 .chain/
 .deploy-env/
 
