@@ -1,6 +1,5 @@
 import type React from "react";
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
 import "@rainbow-me/rainbowkit/styles.css";
 import {
   Space_Grotesk,
@@ -72,13 +71,12 @@ function normalizeTheme(value: string | undefined): Theme {
   return VALID_THEMES.includes(value as Theme) ? (value as Theme) : "kawaii";
 }
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const initialTheme = normalizeTheme(cookieStore.get("mochi-theme")?.value);
+  const initialTheme = normalizeTheme(undefined);
   const themeScript = `
     (function() {
       var themes = ['neural', 'black-pink', 'kawaii', 'pastel'];

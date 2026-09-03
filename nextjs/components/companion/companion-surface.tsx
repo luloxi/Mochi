@@ -52,6 +52,32 @@ type OpenChat = "human" | "nimbo" | "help" | null;
 
 const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [], members: [], configured: false };
 
+const SYNC_MS = 15_000;
+const SYNC_HIDDEN_MS = 60_000;
+const TRELLO_MS = 45_000;
+const PRESENCE_MS = 30_000;
+
+function startVisibilityInterval(visibleMs: number, hiddenMs: number, tick: () => void) {
+  let id = 0;
+  const arm = () => {
+    window.clearInterval(id);
+    const ms = document.visibilityState === "visible" ? visibleMs : hiddenMs;
+    if (ms <= 0) return;
+    id = window.setInterval(tick, ms);
+  };
+  tick();
+  arm();
+  const onVis = () => {
+    if (document.visibilityState === "visible") tick();
+    arm();
+  };
+  document.addEventListener("visibilitychange", onVis);
+  return () => {
+    window.clearInterval(id);
+    document.removeEventListener("visibilitychange", onVis);
+  };
+}
+
 function PresenceFace({
   face,
   character,
@@ -254,11 +280,10 @@ export function CompanionSurface() {
         // keep last snapshot
       }
     };
-    void pull();
-    const id = window.setInterval(() => void pull(), 2500);
+    const stop = startVisibilityInterval(SYNC_MS, SYNC_HIDDEN_MS, () => void pull());
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stop();
     };
   }, [auth]);
 
@@ -325,9 +350,7 @@ export function CompanionSurface() {
 
   useEffect(() => {
     if (!auth) return;
-    void pullBoard();
-    const id = window.setInterval(() => void pullBoard(), 8000);
-    return () => window.clearInterval(id);
+    return startVisibilityInterval(TRELLO_MS, 0, () => void pullBoard());
   }, [auth, pullBoard]);
 
   useEffect(() => {
@@ -345,17 +368,16 @@ export function CompanionSurface() {
         })
         .catch(() => {});
     };
-    beat("present");
-    const id = window.setInterval(() => {
+    const stopBeat = startVisibilityInterval(PRESENCE_MS, 0, () => {
       beat(document.visibilityState === "visible" ? "present" : "idle-away");
-    }, 8000);
+    });
     const onVis = () => beat(document.visibilityState === "visible" ? "present" : "idle-away");
     const onLeave = () => beat("close");
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pagehide", onLeave);
     return () => {
       beat("close");
-      window.clearInterval(id);
+      stopBeat();
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", onLeave);
     };

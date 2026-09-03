@@ -608,6 +608,19 @@ describe("fullscreen companion surface", () => {
     assert.doesNotMatch(login, /google\.accounts\.id\.prompt/);
     assert.match(css, /\.companion-login-card[\s\S]*z-index:\s*200/);
   });
+
+  it("companion polling is slow enough for the Vercel hobby cap", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
+    assert.match(surface, /const SYNC_MS = 15_000/);
+    assert.match(surface, /const SYNC_HIDDEN_MS = 60_000/);
+    assert.match(surface, /const TRELLO_MS = 45_000/);
+    assert.match(surface, /const PRESENCE_MS = 30_000/);
+    assert.doesNotMatch(surface, /setInterval\(\(\) => void pull\(\), 2500\)/);
+    const proxy = readFileSync(join(here, "../../proxy.ts"), "utf8");
+    assert.match(proxy, /api\//);
+    assert.match(proxy, /sprites\//);
+  });
 });
 
 describe("in-browser due cron", () => {

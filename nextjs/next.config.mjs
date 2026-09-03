@@ -13,7 +13,10 @@ const nextConfig = {
     unoptimized: true,
   },
   async redirects() {
-    return [{ source: "/companion", destination: "/", permanent: true }];
+    return [
+      { source: "/companion", destination: "/", permanent: true },
+      { source: "/api/site-mochi/sprite/:path*", destination: "/sprites/:path*", permanent: true },
+    ];
   },
   webpack: (config) => {
     config.resolve = config.resolve || {}
