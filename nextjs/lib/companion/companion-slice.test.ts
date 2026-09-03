@@ -632,6 +632,7 @@ describe("fullscreen companion surface", () => {
     assert.match(surface, /\/api\/companion\/ra/);
     assert.match(nextConfig, /companion-gone\.json/);
     assert.match(nextConfig, /\/api\/companion\/sync/);
+    assert.match(nextConfig, /s-maxage=31536000/);
     assert.ok(existsSync(join(here, "../../public/companion-gone.json")));
     assert.ok(!existsSync(join(here, "../../app/api/companion/sync/route.ts")));
     assert.ok(!existsSync(join(here, "../../app/api/companion/trello/route.ts")));

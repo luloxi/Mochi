@@ -29,14 +29,15 @@ const nextConfig = {
     };
   },
   async headers() {
+    const gone = [
+      { key: "Cache-Control", value: "public, max-age=31536000, s-maxage=31536000, immutable" },
+      { key: "CDN-Cache-Control", value: "public, max-age=31536000, immutable" },
+      { key: "Content-Type", value: "application/json; charset=utf-8" },
+    ];
     return [
-      {
-        source: "/companion-gone.json",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=120, s-maxage=120" },
-          { key: "Content-Type", value: "application/json; charset=utf-8" },
-        ],
-      },
+      { source: "/companion-gone.json", headers: gone },
+      { source: "/api/companion/sync", headers: gone },
+      { source: "/api/companion/trello", headers: gone },
     ];
   },
   webpack: (config) => {
