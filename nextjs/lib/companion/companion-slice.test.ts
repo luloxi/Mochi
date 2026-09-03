@@ -614,8 +614,8 @@ describe("fullscreen companion surface", () => {
     const surface = readFileSync(join(here, "../../components/companion/companion-surface.tsx"), "utf8");
     assert.match(surface, /const SYNC_MS = 15_000/);
     assert.match(surface, /const SYNC_HIDDEN_MS = 60_000/);
-    assert.match(surface, /const TRELLO_MS = 45_000/);
-    assert.match(surface, /const PRESENCE_MS = 30_000/);
+    assert.match(surface, /data-tareas-pane/);
+    assert.doesNotMatch(surface, /PRESENCE_MS/);
     assert.doesNotMatch(surface, /setInterval\(\(\) => void pull\(\), 2500\)/);
     const proxy = readFileSync(join(here, "../../proxy.ts"), "utf8");
     assert.match(proxy, /api\//);

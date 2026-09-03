@@ -7,6 +7,7 @@ import { CompanionApps } from "@/components/companion/companion-apps";
 import {
   COMPANION_DUE_EVENT,
   COMPANION_OPEN_APP,
+  COMPANION_OPEN_RA,
   addTodoItem,
   applyNimboClock,
   dueLine,
@@ -55,7 +56,6 @@ const EMPTY_BOARD: RaBoard = { id: "UjFhgg3n", name: "Ra", lists: [], cards: [],
 const SYNC_MS = 15_000;
 const SYNC_HIDDEN_MS = 60_000;
 const TRELLO_MS = 45_000;
-const PRESENCE_MS = 30_000;
 
 function startVisibilityInterval(visibleMs: number, hiddenMs: number, tick: () => void) {
   let id = 0;
@@ -350,7 +350,24 @@ export function CompanionSurface() {
 
   useEffect(() => {
     if (!auth) return;
-    return startVisibilityInterval(TRELLO_MS, 0, () => void pullBoard());
+    void pullBoard();
+    const refreshIfOpen = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!document.querySelector("[data-tareas-pane]")) return;
+      void pullBoard();
+    };
+    const onOpenApp = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id || id === "boards") void pullBoard();
+    };
+    const id = window.setInterval(refreshIfOpen, TRELLO_MS);
+    window.addEventListener(COMPANION_OPEN_RA, pullBoard);
+    window.addEventListener(COMPANION_OPEN_APP, onOpenApp);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener(COMPANION_OPEN_RA, pullBoard);
+      window.removeEventListener(COMPANION_OPEN_APP, onOpenApp);
+    };
   }, [auth, pullBoard]);
 
   useEffect(() => {
@@ -368,16 +385,13 @@ export function CompanionSurface() {
         })
         .catch(() => {});
     };
-    const stopBeat = startVisibilityInterval(PRESENCE_MS, 0, () => {
-      beat(document.visibilityState === "visible" ? "present" : "idle-away");
-    });
+    beat(document.visibilityState === "visible" ? "present" : "idle-away");
     const onVis = () => beat(document.visibilityState === "visible" ? "present" : "idle-away");
     const onLeave = () => beat("close");
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pagehide", onLeave);
     return () => {
       beat("close");
-      stopBeat();
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pagehide", onLeave);
     };
