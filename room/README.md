@@ -14,3 +14,6 @@ Copiá la URL `wss://….workers.dev` a la env de Vercel:
 - `COMPANION_ROOM_URL`
 
 Después recargá https://mochiagents.vercel.app
+
+Hibernar (dormir en RAM) no borra el cuarto. Igual hay un ping cada ~6 días
+desde Cloudflare, no desde Vercel.

@@ -16,6 +16,7 @@ type Attachment = { personId: PersonId };
 const IDLE_MS = 25_000;
 const TYPING_MS = 6_000;
 const MAX_SOCKETS = 12;
+const KEEP_MS = 6 * 24 * 60 * 60 * 1000;
 
 function cors(origin: string | null): HeadersInit {
   const allow =
@@ -72,9 +73,20 @@ export class CompanionRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ personId: ticket.personId } satisfies Attachment);
     this.heartbeat(ticket.personId, "present");
+    await this.touch();
     server.send(JSON.stringify(this.snapshot()));
     this.broadcast();
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** Cloudflare cron + first socket: keep sqlite warm. Hibernation is still fine. */
+  async touch() {
+    this.putMeta("last_ping", String(Date.now()));
+    await this.ctx.storage.setAlarm(Date.now() + KEEP_MS);
+  }
+
+  async alarm() {
+    await this.touch();
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
@@ -211,5 +223,10 @@ export default {
 
     const stub = env.COMPANION_ROOM.getByName("katho-lulox");
     return stub.fetch(request);
+  },
+
+  async scheduled(_event: ScheduledEvent, env: Env) {
+    const stub = env.COMPANION_ROOM.getByName("katho-lulox");
+    await stub.touch();
   },
 } satisfies ExportedHandler<Env>;
