@@ -136,6 +136,8 @@ import { handleCompanionTrelloRequest } from "./trello-api";
 import {
   WINDOW_Z_CAP,
   clickDockApp,
+  maximizeWindow,
+  toggleMaximizeWindow,
   closeWindow,
   openWindow,
   resizeWindow,
@@ -831,6 +833,50 @@ describe("first paint desk + bubbles + in-app llm", () => {
     assert.equal(existsSync(join(hereSprites, "nimbo/stand-neutral.png")), true);
     assert.equal(existsSync(join(hereSprites, "mochi/stand-neutral.png")), true);
     assert.equal(existsSync(join(hereSprites, "lulox/stand-neutral.png")), true);
+  });
+});
+
+
+describe("mini app store + maximize", () => {
+  it("keeps tareas core and installs the rest", async () => {
+    const { CORE_INSTALLED_APPS, installApp, uninstallApp, normalizeInstalledApps, isAppInstalled } = await import("./companion-core");
+    assert.deepEqual(CORE_INSTALLED_APPS, ["boards"]);
+    const base = normalizeInstalledApps([]);
+    assert.deepEqual(base, ["boards"]);
+    assert.equal(isAppInstalled(base, "boards"), true);
+    const withPomo = installApp(base, "pomo");
+    assert.equal(isAppInstalled(withPomo, "pomo"), true);
+    assert.deepEqual(uninstallApp(withPomo, "boards"), withPomo); // cannot remove core
+    assert.deepEqual(uninstallApp(withPomo, "pomo"), ["boards"]);
+  });
+
+  it("desktop maximize restores previous geometry", () => {
+    let wins = openWindow([], "notas", { x: 40, y: 50, w: 280, h: 320 });
+    wins = maximizeWindow(wins, "notas");
+    assert.equal(wins[0].maximized, true);
+    assert.deepEqual(wins[0].preMax, { x: 40, y: 50, w: 280, h: 320 });
+    wins = toggleMaximizeWindow(wins, "notas");
+    assert.equal(wins[0].maximized, false);
+    assert.equal(wins[0].x, 40);
+    assert.equal(wins[0].y, 50);
+    assert.equal(wins[0].w, 280);
+    assert.equal(wins[0].h, 320);
+  });
+
+  it("ships store + phone control center wiring", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const apps = readFileSync(join(here, "../../components/companion/companion-apps.tsx"), "utf8");
+    const win = readFileSync(join(here, "../../components/companion/companion-window.tsx"), "utf8");
+    const css = readFileSync(join(here, "../../app/companion/companion.css"), "utf8");
+    assert.match(apps, /data-app-store/);
+    assert.match(apps, /data-store-install/);
+    assert.match(apps, /data-phone-center/);
+    assert.match(apps, /data-phone-control-center/);
+    assert.match(apps, /loadInstalledApps/);
+    assert.match(win, /data-win-max/);
+    assert.match(win, /data-win-min/);
+    assert.match(css, /\.phone-control-center/);
+    assert.match(css, /\.miniapp-window\.is-maximized/);
   });
 });
 

@@ -201,7 +201,7 @@ export function CompanionWanderer({
             (pack === "lulox"
               ? "Lulox, el gato ninja"
               : pack === "nimbo"
-                ? "Nimbo"
+                ? "Nimbo, la nubecita"
                 : "Mochi")
           }
           data-character={pack}
@@ -399,7 +399,7 @@ export function CompanionPair({
           perch={null}
           scale={scale * 0.88}
           pack="nimbo"
-          label="Nimbo"
+          label="Nimbo, la nubecita"
           onClick={onNimboClick}
           bias={null}
           extraClass={`is-nimbo${nimboWorking ? " is-play" : ""}`}
