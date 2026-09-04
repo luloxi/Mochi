@@ -5,17 +5,23 @@ import { createPortal } from "react-dom";
 import {
   COMPANION_OPEN_APP,
   COMPANION_OPEN_RA,
+  CORE_INSTALLED_APPS,
   RA_APPS,
   addTodoItem,
   applyNimboClock,
   extractHttpUrl,
+  installApp,
+  isAppInstalled,
+  loadInstalledApps,
   loadOpenApps,
   loadPomo,
   loadTodos,
   loadVideoUrl,
+  saveInstalledApps,
   saveOpenApps,
   saveTodos,
   saveVideoUrl,
+  uninstallApp,
   type PersonId,
   type RaAppId,
   type TodoItem,
@@ -37,9 +43,11 @@ import {
   clickDockApp,
   closeWindow,
   focusWindow,
+  minimizeWindow,
   moveWindow,
   openWindow,
   resizeWindow,
+  toggleMaximizeWindow,
   windowIsVisible,
   type LiveWindow,
 } from "@/lib/companion/windows";
@@ -59,17 +67,95 @@ function formatRemain(sec: number) {
   return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function AppDock({
-  visibleIds,
-  onPick,
+const APP_BLURBS: Record<RaAppId, string> = {
+  pomo: "timer de foco",
+  notas: "lista corta local",
+  video: "youtube embebido",
+  radio: "ruido de fondo",
+  boards: "tareas en Ra (Trello)",
+};
+
+function AppStorePane({
+  installed,
+  onInstall,
+  onUninstall,
 }: {
-  visibleIds: RaAppId[];
-  onPick: (id: RaAppId) => void;
+  installed: RaAppId[];
+  onInstall: (id: RaAppId) => void;
+  onUninstall: (id: RaAppId) => void;
 }) {
   return (
-    <div className="app-dock" data-app-dock data-ra-dock>
-      <nav className="app-dock-nav" data-ra-nav aria-label="Apps">
+    <div className="miniapp-body app-store" data-miniapp="tienda" data-app-store>
+      <p className="miniapp-kicker">tienda</p>
+      <p className="app-store-hint">Instalá para que aparezcan en el dock. Tareas queda siempre.</p>
+      <ul className="app-store-list">
         {RA_APPS.map((app) => {
+          const on = isAppInstalled(installed, app.id);
+          const core = CORE_INSTALLED_APPS.includes(app.id);
+          return (
+            <li key={app.id} className="app-store-row" data-store-app={app.id} data-installed={on ? "true" : "false"}>
+              <div>
+                <strong>{app.label}</strong>
+                <span>{APP_BLURBS[app.id]}</span>
+              </div>
+              {core ? (
+                <button type="button" className="dock-btn is-on" disabled data-store-core>
+                  core
+                </button>
+              ) : on ? (
+                <button type="button" className="dock-btn" data-store-uninstall={app.id} onClick={() => onUninstall(app.id)}>
+                  desinstalar
+                </button>
+              ) : (
+                <button type="button" className="dock-btn is-on" data-store-install={app.id} onClick={() => onInstall(app.id)}>
+                  instalar
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function AppDock({
+  installedIds,
+  visibleIds,
+  phone,
+  launcherOpen,
+  onPick,
+  onOpenStore,
+  onToggleLauncher,
+  onToggleSwitcher,
+}: {
+  installedIds: RaAppId[];
+  visibleIds: RaAppId[];
+  phone: boolean;
+  launcherOpen: boolean;
+  onPick: (id: RaAppId) => void;
+  onOpenStore: () => void;
+  onToggleLauncher: () => void;
+  onToggleSwitcher: () => void;
+}) {
+  const hasOpen = visibleIds.length > 0;
+  const dockApps = RA_APPS.filter((app) => installedIds.includes(app.id));
+  return (
+    <div className="app-dock" data-app-dock data-ra-dock data-phone-dock={phone ? "true" : "false"}>
+      {phone ? (
+        <button
+          type="button"
+          className={`dock-btn ra-switch${launcherOpen ? " is-on" : ""}`}
+          data-phone-center
+          data-ra-switch
+          aria-label={hasOpen ? "App switcher" : "Control center"}
+          onClick={() => (hasOpen ? onToggleSwitcher() : onToggleLauncher())}
+        >
+          {hasOpen ? "apps" : "casa"}
+        </button>
+      ) : null}
+      <nav className="app-dock-nav" data-ra-nav aria-label="Apps">
+        {dockApps.map((app) => {
           const open = visibleIds.includes(app.id);
           return (
             <button
@@ -86,7 +172,70 @@ function AppDock({
             </button>
           );
         })}
+        <button type="button" className="dock-btn" data-dock-store data-ra-app="tienda" onClick={onOpenStore}>
+          tienda
+        </button>
       </nav>
+    </div>
+  );
+}
+
+function PhoneLauncher({
+  installedIds,
+  visibleIds,
+  mode,
+  onPick,
+  onOpenStore,
+  onClose,
+}: {
+  installedIds: RaAppId[];
+  visibleIds: RaAppId[];
+  mode: "launcher" | "switcher";
+  onPick: (id: RaAppId) => void;
+  onOpenStore: () => void;
+  onClose: () => void;
+}) {
+  const apps =
+    mode === "switcher"
+      ? RA_APPS.filter((app) => visibleIds.includes(app.id))
+      : RA_APPS.filter((app) => installedIds.includes(app.id));
+  return (
+    <div className="phone-control-center" data-phone-control-center data-mode={mode} role="dialog" aria-label={mode === "switcher" ? "App switcher" : "Control center"}>
+      <header className="phone-cc-chrome">
+        <span>{mode === "switcher" ? "cambiar app" : "launcher"}</span>
+        <button type="button" className="talk-close" aria-label="Cerrar" onClick={onClose}>
+          ×
+        </button>
+      </header>
+      <div className="phone-cc-grid">
+        {apps.map((app) => (
+          <button
+            key={app.id}
+            type="button"
+            className={`dock-btn${visibleIds.includes(app.id) ? " is-on" : ""}`}
+            data-cc-app={app.id}
+            onClick={() => {
+              onPick(app.id);
+              onClose();
+            }}
+          >
+            {app.label}
+          </button>
+        ))}
+        {mode === "launcher" ? (
+          <button
+            type="button"
+            className="dock-btn"
+            data-cc-store
+            onClick={() => {
+              onOpenStore();
+              onClose();
+            }}
+          >
+            tienda
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -817,9 +966,16 @@ export function CompanionApps({
   const phone = usePhone();
   const [order, setOrder] = useState<RaAppId[]>([]);
   const [wins, setWins] = useState<LiveWindow[]>([]);
+  const [installed, setInstalled] = useState<RaAppId[]>(CORE_INSTALLED_APPS);
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [phoneSheet, setPhoneSheet] = useState<"launcher" | "switcher" | null>(null);
 
   useEffect(() => {
-    const saved = loadOpenApps().filter((id): id is RaAppId => RA_APPS.some((app) => app.id === id));
+    const got = loadInstalledApps();
+    setInstalled(got);
+    const saved = loadOpenApps().filter(
+      (id): id is RaAppId => RA_APPS.some((app) => app.id === id) && got.includes(id as RaAppId),
+    );
     setOrder(saved);
     let next: LiveWindow[] = [];
     for (const id of saved) {
@@ -834,10 +990,18 @@ export function CompanionApps({
     onFoco(phone && visible);
   }, [order, wins, phone, onFoco]);
 
+  useEffect(() => {
+    saveInstalledApps(installed);
+  }, [installed]);
+
   const visibleIds = order.filter((id) => windowIsVisible(wins, id));
   const active = [...visibleIds].reverse()[0] || null;
 
   function pick(id: RaAppId) {
+    if (!isAppInstalled(installed, id)) {
+      setStoreOpen(true);
+      return;
+    }
     const { windows, action } = clickDockApp(wins, id, APP_SEED[id]);
     setWins(windows);
     if (action === "minimize") return;
@@ -850,6 +1014,10 @@ export function CompanionApps({
 
   useEffect(() => {
     const launch = (id: RaAppId) => {
+      setInstalled((prev) => {
+        const next = installApp(prev, id);
+        return next;
+      });
       setWins((prev) => openWindow(prev, id, APP_SEED[id]));
       setOrder((prev) => {
         const next: RaAppId[] = prev.filter((row) => row !== id);
@@ -873,6 +1041,15 @@ export function CompanionApps({
   function close(id: RaAppId) {
     setOrder((prev) => prev.filter((row) => row !== id));
     setWins((prev) => closeWindow(prev, id));
+  }
+
+  function doInstall(id: RaAppId) {
+    setInstalled((prev) => installApp(prev, id));
+  }
+
+  function doUninstall(id: RaAppId) {
+    setInstalled((prev) => uninstallApp(prev, id));
+    close(id);
   }
 
   function pane(id: RaAppId) {
@@ -901,10 +1078,56 @@ export function CompanionApps({
     return map;
   }, [wins]);
 
+  const storePos: LiveWindow = {
+    id: "tienda",
+    x: 72,
+    y: 96,
+    z: 55,
+    w: 320,
+    h: 420,
+    minimized: false,
+  };
+
   return (
     <>
-      <AppDock visibleIds={visibleIds} onPick={pick} />
+      <AppDock
+        installedIds={installed}
+        visibleIds={visibleIds}
+        phone={phone}
+        launcherOpen={phoneSheet !== null}
+        onPick={pick}
+        onOpenStore={() => setStoreOpen(true)}
+        onToggleLauncher={() => setPhoneSheet((cur) => (cur === "launcher" ? null : "launcher"))}
+        onToggleSwitcher={() => setPhoneSheet((cur) => (cur === "switcher" ? null : "switcher"))}
+      />
+      {phone && phoneSheet ? (
+        <PhoneLauncher
+          installedIds={installed}
+          visibleIds={visibleIds}
+          mode={phoneSheet}
+          onPick={pick}
+          onOpenStore={() => setStoreOpen(true)}
+          onClose={() => setPhoneSheet(null)}
+        />
+      ) : null}
+      {storeOpen ? (
+        <DeskWindow
+          id="tienda"
+          title="tienda"
+          phone={phone}
+          pos={storePos}
+          variant="app"
+          minimized={false}
+          onClose={() => setStoreOpen(false)}
+          onFocus={() => {}}
+          onMove={() => {}}
+          onResize={() => {}}
+        >
+          <AppStorePane installed={installed} onInstall={doInstall} onUninstall={doUninstall} />
+        </DeskWindow>
+      ) : null}
       {order.map((id) => {
+        if (!isAppInstalled(installed, id)) return null;
         const pos = positions.get(id) || {
           id,
           x: 64,
@@ -928,6 +1151,8 @@ export function CompanionApps({
             onFocus={() => setWins((prev) => focusWindow(prev, id))}
             onMove={(x, y) => setWins((prev) => moveWindow(prev, id, x, y))}
             onResize={(next) => setWins((prev) => resizeWindow(prev, id, next))}
+            onMinimize={phone ? undefined : () => setWins((prev) => minimizeWindow(prev, id))}
+            onMaximize={phone ? undefined : () => setWins((prev) => toggleMaximizeWindow(prev, id))}
           >
             {pane(id)}
           </DeskWindow>

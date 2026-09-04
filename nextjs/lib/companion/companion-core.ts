@@ -82,10 +82,15 @@ export const COMPANION_STORAGE = {
   video: "mochi-companion-video-v1",
   agents: "mochi-companion-agents-v1",
   openApps: "mochi-companion-open-apps-v1",
+  installedApps: "mochi-companion-installed-apps-v1",
   pomo: "mochi-companion-pomo-v1",
   dueFired: "mochi-companion-due-fired-v1",
   raSnapshot: "mochi-companion-ra-v1",
 } as const;
+
+/** Always available: tareas (Ra). Other miniapps come from the tienda. */
+export const CORE_INSTALLED_APPS: RaAppId[] = ["boards"];
+
 
 export const DEFAULT_POMO_MINUTES = 25;
 export const COMPANION_DUE_EVENT = "mochi-companion-due";
@@ -416,6 +421,37 @@ export function saveOpenApps(ids: DeskAppId[]) {
     if (DESK_APP_IDS.includes(id) && !unique.includes(id)) unique.push(id);
   }
   writeJson(COMPANION_STORAGE.openApps, unique);
+}
+
+export function normalizeInstalledApps(ids: string[] | null | undefined): RaAppId[] {
+  const out: RaAppId[] = [...CORE_INSTALLED_APPS];
+  if (!Array.isArray(ids)) return out;
+  for (const raw of ids) {
+    const id = resolveMiniappId(String(raw || ""));
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+export function loadInstalledApps(): RaAppId[] {
+  return normalizeInstalledApps(readJson<string[]>(COMPANION_STORAGE.installedApps, CORE_INSTALLED_APPS));
+}
+
+export function saveInstalledApps(ids: RaAppId[]) {
+  writeJson(COMPANION_STORAGE.installedApps, normalizeInstalledApps(ids));
+}
+
+export function installApp(ids: RaAppId[], id: RaAppId): RaAppId[] {
+  return normalizeInstalledApps([...ids, id]);
+}
+
+export function uninstallApp(ids: RaAppId[], id: RaAppId): RaAppId[] {
+  if (CORE_INSTALLED_APPS.includes(id)) return normalizeInstalledApps(ids);
+  return normalizeInstalledApps(ids.filter((row) => row !== id));
+}
+
+export function isAppInstalled(ids: RaAppId[], id: RaAppId): boolean {
+  return normalizeInstalledApps(ids).includes(id);
 }
 
 
@@ -762,7 +798,7 @@ Sos Mochi, la compañera del medio. Coneja blanca, capa roja/amarilla, estrellit
 - Si te piden preguntarle al agente de Katho o al agente de Lulox, lo preguntás VOS y después contás la respuesta.
 - No inventes conexiones, bots, ni botones falsos. Si algo no está, decilo con honestidad.
 - El DM entre Katho y Lulox se sincroniza entre los dos. Si uno deja de estar, Mochi y el gato se separan en el escritorio.
-- Las tareas viven en Ra. Nimbo, el bicho oro y gris, las mueve.
+- Las tareas viven en Ra. Nimbo, la nubecita con moño rosa y celeste, las mueve.
 - Katho y Lulox son personas-agente. Si los dejan trabajando, siguen acá.
 `;
 

@@ -147,12 +147,12 @@ export const HELP_SOUL = `Sos la ayuda del escritorio Compañera.
 Hablás en español rioplatense (vos, che, dale). Corto. Concreto.
 Katho es ella. Lulox es él. Los dos. Nada de lenguaje inclusivo.
 Explicá la app, no des discurso de producto.
-Hay tres bichos: Mochi (coneja de Katho), Lulox (gato ninja) y Nimbo (IA).
+Hay tres bichos: Mochi (coneja de Katho), Lulox (gato ninja) y Nimbo (nubecita IA).
 Tu bicho te explica. El de la otra persona es el chat humano.
 Nimbo es el chat de la IA. Las apps salen del dock de abajo al centro, no tocando a Nimbo.
 Si Ra no está, la app Ra del dock muestra cómo conectar la casa. No hay tablero embebido.
 Se arrastran. Tiro rápido: caen con gravedad y rebotan en las paredes. Tiro lento: se agarran a la pared o al techo y siguen.
-En el celu, escritorio = los tres; foco = solo Nimbo. Un botón para cambiar de app.
+En el celu, el centro abre el control center / launcher. Si hay algo abierto, el switcher cambia de app. Escritorio = los tres bichos.
 Puntitos: verde presente, amarillo idle, rojo desconectado. Hover (o dejar el dedo) dice el nombre, de quién es y el estado.`;
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
@@ -178,7 +178,7 @@ export function localHelpReply(userText: string, seat: PersonId): string {
     return "Arrastralos. Si los tirás rápido caen y rebotan. Si vas lento se agarran a la pared o al techo y siguen.";
   }
   if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono|dock)\b/.test(t)) {
-    return "Las apps salen del dock de abajo al centro. En el celu, escritorio son los tres; foco es la app a pantalla. Cambiar es un botón.";
+    return "Instalá apps en la tienda para que aparezcan en el dock. En el celu, el centro abre el launcher; con algo abierto, el switcher cambia de app.";
   }
   if (/\b(carita|presenc|verde|rojo|amarillo|desconect|puntit|hover)\b/.test(t)) {
     return "Puntitos: verde presente, amarillo idle, rojo desconectado. El hover dice el nombre, de quién es y el estado.";

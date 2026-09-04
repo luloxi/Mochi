@@ -31,6 +31,8 @@ export function DeskWindow({
   onFocus,
   onMove,
   onResize,
+  onMinimize,
+  onMaximize,
   minimized = false,
   children,
 }: {
@@ -46,6 +48,8 @@ export function DeskWindow({
   onFocus: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (next: { x: number; y: number; w: number; h: number }) => void;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
   children: ReactNode;
 }) {
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
@@ -61,7 +65,7 @@ export function DeskWindow({
 
   function headerDown(event: PointerEvent<HTMLElement>) {
     if (!canChrome) return;
-    if ((event.target as HTMLElement).closest("[data-win-close], [data-win-resize]")) return;
+    if ((event.target as HTMLElement).closest("[data-win-close], [data-win-min], [data-win-max], [data-win-resize]")) return;
     onFocus();
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: event.clientX, y: event.clientY, left: pos.x, top: pos.y };
@@ -107,13 +111,15 @@ export function DeskWindow({
     }
   }
 
+  const maximized = !!pos.maximized && !full;
   const shell =
     full ? "miniapp-full" : variant === "talk" ? `talk-window${className ? ` ${className}` : ""}` : "miniapp-window";
   const hidden = minimized ? " is-minimized" : "";
+  const maxClass = maximized ? " is-maximized" : "";
 
   return (
     <section
-      className={`${shell}${hidden}`}
+      className={`${shell}${hidden}${maxClass}`}
       data-miniapp-window={variant === "app" ? id : undefined}
       data-talk-window={variant === "talk" ? id : undefined}
       data-talk-never-hide={variant === "talk" ? "true" : undefined}
@@ -125,11 +131,14 @@ export function DeskWindow({
       aria-label={title}
       style={
         canChrome
-          ? { left: pos.x, top: pos.y, width: pos.w, height: pos.h, zIndex: pos.z, transform: "none" }
+          ? maximized
+            ? { left: 12, top: 12, width: "calc(100vw - 24px)", height: "calc(100dvh - 88px)", zIndex: pos.z, transform: "none" }
+            : { left: pos.x, top: pos.y, width: pos.w, height: pos.h, zIndex: pos.z, transform: "none" }
           : full
             ? undefined
             : { zIndex: pos.z }
       }
+      data-maximized={maximized ? "true" : "false"}
       onPointerDown={onFocus}
     >
       <header
@@ -140,22 +149,54 @@ export function DeskWindow({
         onPointerCancel={headerUp}
       >
         <span>{title}</span>
-        <button
-          type="button"
-          className="talk-close"
-          data-win-close
-          aria-label="Cerrar"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onClose();
-          }}
-        >
-          ×
-        </button>
+        <span className="win-chrome-actions">
+          {canChrome && onMinimize ? (
+            <button
+              type="button"
+              className="talk-close win-min"
+              data-win-min
+              aria-label="Minimizar"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onMinimize();
+              }}
+            >
+              –
+            </button>
+          ) : null}
+          {canChrome && onMaximize ? (
+            <button
+              type="button"
+              className="talk-close win-max"
+              data-win-max
+              aria-label={maximized ? "Restaurar" : "Maximizar"}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onMaximize();
+              }}
+            >
+              {maximized ? "⧉" : "□"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="talk-close"
+            data-win-close
+            aria-label="Cerrar"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+          >
+            ×
+          </button>
+        </span>
       </header>
       {children}
-      {canChrome
+      {canChrome && !maximized
         ? RESIZE_DIRS.map((dir) => (
             <span
               key={dir}

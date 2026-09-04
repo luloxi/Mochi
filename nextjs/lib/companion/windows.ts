@@ -12,6 +12,9 @@ export type LiveWindow = {
   h: number;
   z: number;
   minimized?: boolean;
+  maximized?: boolean;
+  /** Geometry before maximize, so restore comes back. */
+  preMax?: { x: number; y: number; w: number; h: number };
 };
 
 export const MIN_WINDOW = { w: 200, h: 140 };
@@ -58,6 +61,7 @@ export function openWindow(
       h: seed?.h ?? DEFAULT_WINDOW.h,
       z,
       minimized: false,
+      maximized: false,
     },
   ];
 }
@@ -127,6 +131,45 @@ export function resizeWindow(
       h: size.h,
     };
   });
+}
+
+export function maximizeWindow(windows: LiveWindow[], id: string): LiveWindow[] {
+  if (!windowIsOpen(windows, id)) return windows;
+  const z = nextZ(windows);
+  return windows.map((win) => {
+    if (win.id !== id) return win;
+    if (win.maximized) return { ...win, z, minimized: false };
+    return {
+      ...win,
+      z,
+      minimized: false,
+      maximized: true,
+      preMax: { x: win.x, y: win.y, w: win.w, h: win.h },
+    };
+  });
+}
+
+export function unmaximizeWindow(windows: LiveWindow[], id: string): LiveWindow[] {
+  return windows.map((win) => {
+    if (win.id !== id || !win.maximized) return win;
+    const prev = win.preMax;
+    return {
+      ...win,
+      maximized: false,
+      preMax: undefined,
+      x: prev?.x ?? win.x,
+      y: prev?.y ?? win.y,
+      w: prev?.w ?? win.w,
+      h: prev?.h ?? win.h,
+      minimized: false,
+    };
+  });
+}
+
+export function toggleMaximizeWindow(windows: LiveWindow[], id: string): LiveWindow[] {
+  const found = windows.find((win) => win.id === id);
+  if (!found) return windows;
+  return found.maximized ? unmaximizeWindow(windows, id) : maximizeWindow(windows, id);
 }
 
 export const RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
