@@ -820,7 +820,7 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 .phone-control-center {
   position: fixed;
   left: 50%;
-  bottom: 72px;
+  bottom: 90px;
   transform: translateX(-50%);
   z-index: 90;
   width: min(92vw, 360px);
@@ -854,12 +854,29 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   padding: 10px;
 }
 
-.app-dock[data-phone-dock="true"] {
-  gap: 10px;
+.phone-cc-add {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 0 10px 12px;
+  border-radius: 16px;
+  border: 2px solid var(--c-ink);
+  background: #f4a24c;
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 12px 14px;
+  cursor: pointer;
 }
 
 .app-dock [data-phone-center] {
-  background: #f4a24c;
+  display: none;
+}
+
+@media (min-width: 700px) {
+  .phone-control-center {
+    display: none;
+  }
 }
 
 
@@ -1040,6 +1057,10 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   border-radius: 999px;
   border: 2px solid var(--c-ink);
   background: #fff6ee;
+}
+
+.app-dock-nav[hidden] {
+  display: none;
 }
 
 .ra-launcher,
@@ -1285,6 +1306,34 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 }
 
 @media (max-width: 699px) {
+  .app-dock {
+    z-index: 100;
+    max-width: none;
+  }
+
+  .app-dock .app-dock-nav,
+  .app-dock-nav[hidden] {
+    display: none;
+  }
+
+  .app-dock [data-phone-center] {
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    background: #f4a24c;
+    box-shadow: 4px 5px 0 var(--c-ink);
+  }
+
+  .app-dock [data-phone-center].is-on {
+    background: #fff6ee;
+  }
+
   .talk-window,
   .talk-window.tint-pink,
   .talk-window.tint-cyan,

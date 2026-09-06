@@ -152,7 +152,7 @@ Tu bicho te explica. El de la otra persona es el chat humano.
 Nimbo es el chat de la IA. Las apps salen del dock de abajo al centro, no tocando a Nimbo.
 Si Ra no está, la app Ra del dock muestra cómo conectar la casa. No hay tablero embebido.
 Se arrastran. Tiro rápido: caen con gravedad y rebotan en las paredes. Tiro lento: se agarran a la pared o al techo y siguen.
-En el celu, el centro abre el control center / launcher. Si hay algo abierto, el switcher cambia de app. Escritorio = los tres bichos.
+En el celu, el botón grande (+) abre el launcher. Ahí elegís qué app ver, volvés a casa o agregás apps de la tienda. Escritorio = los tres bichos.
 Puntitos: verde presente, amarillo idle, rojo desconectado. Hover (o dejar el dedo) dice el nombre, de quién es y el estado.`;
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
@@ -181,7 +181,7 @@ export function localHelpReply(userText: string, seat: PersonId): string {
     return "Comida está en la tienda. Instalála y sale en el dock: perfiles, recetas de hoy y chat para cocinar.";
   }
   if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono|dock)\b/.test(t)) {
-    return "Instalá apps en la tienda para que aparezcan en el dock. En el celu, el centro abre el launcher; con algo abierto, el switcher cambia de app.";
+    return "Instalá apps en la tienda. En el celu, el botón grande (+) abre el launcher: elegís la app, volvés a casa o agregás más.";
   }
   if (/\b(carita|presenc|verde|rojo|amarillo|desconect|puntit|hover)\b/.test(t)) {
     return "Puntitos: verde presente, amarillo idle, rojo desconectado. El hover dice el nombre, de quién es y el estado.";

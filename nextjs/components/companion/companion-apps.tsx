@@ -130,7 +130,6 @@ function AppDock({
   onPick,
   onOpenStore,
   onToggleLauncher,
-  onToggleSwitcher,
 }: {
   installedIds: RaAppId[];
   visibleIds: RaAppId[];
@@ -139,25 +138,22 @@ function AppDock({
   onPick: (id: RaAppId) => void;
   onOpenStore: () => void;
   onToggleLauncher: () => void;
-  onToggleSwitcher: () => void;
 }) {
-  const hasOpen = visibleIds.length > 0;
   const dockApps = RA_APPS.filter((app) => installedIds.includes(app.id));
   return (
     <div className="app-dock" data-app-dock data-ra-dock data-phone-dock={phone ? "true" : "false"}>
-      {phone ? (
-        <button
-          type="button"
-          className={`dock-btn ra-switch${launcherOpen ? " is-on" : ""}`}
-          data-phone-center
-          data-ra-switch
-          aria-label={hasOpen ? "App switcher" : "Control center"}
-          onClick={() => (hasOpen ? onToggleSwitcher() : onToggleLauncher())}
-        >
-          {hasOpen ? "apps" : "casa"}
-        </button>
-      ) : null}
-      <nav className="app-dock-nav" data-ra-nav aria-label="Apps">
+      <button
+        type="button"
+        className={`dock-btn ra-switch phone-launcher-btn${launcherOpen ? " is-on" : ""}`}
+        data-phone-center
+        data-ra-switch
+        aria-label="Launcher"
+        aria-expanded={launcherOpen}
+        onClick={onToggleLauncher}
+      >
+        +
+      </button>
+      <nav className="app-dock-nav" data-ra-nav aria-label="Apps" hidden={phone} aria-hidden={phone}>
         {dockApps.map((app) => {
           const open = visibleIds.includes(app.id);
           return (
@@ -186,31 +182,45 @@ function AppDock({
 function PhoneLauncher({
   installedIds,
   visibleIds,
-  mode,
   onPick,
   onOpenStore,
+  onHome,
   onClose,
 }: {
   installedIds: RaAppId[];
   visibleIds: RaAppId[];
-  mode: "launcher" | "switcher";
   onPick: (id: RaAppId) => void;
   onOpenStore: () => void;
+  onHome: () => void;
   onClose: () => void;
 }) {
-  const apps =
-    mode === "switcher"
-      ? RA_APPS.filter((app) => visibleIds.includes(app.id))
-      : RA_APPS.filter((app) => installedIds.includes(app.id));
+  const apps = RA_APPS.filter((app) => installedIds.includes(app.id));
   return (
-    <div className="phone-control-center" data-phone-control-center data-mode={mode} role="dialog" aria-label={mode === "switcher" ? "App switcher" : "Control center"}>
+    <div
+      className="phone-control-center"
+      data-phone-control-center
+      data-mode="launcher"
+      role="dialog"
+      aria-label="Launcher"
+    >
       <header className="phone-cc-chrome">
-        <span>{mode === "switcher" ? "cambiar app" : "launcher"}</span>
+        <span>apps</span>
         <button type="button" className="talk-close" aria-label="Cerrar" onClick={onClose}>
           ×
         </button>
       </header>
       <div className="phone-cc-grid">
+        <button
+          type="button"
+          className="dock-btn"
+          data-cc-home
+          onClick={() => {
+            onHome();
+            onClose();
+          }}
+        >
+          casa
+        </button>
         {apps.map((app) => (
           <button
             key={app.id}
@@ -225,20 +235,18 @@ function PhoneLauncher({
             {app.label}
           </button>
         ))}
-        {mode === "launcher" ? (
-          <button
-            type="button"
-            className="dock-btn"
-            data-cc-store
-            onClick={() => {
-              onOpenStore();
-              onClose();
-            }}
-          >
-            tienda
-          </button>
-        ) : null}
       </div>
+      <button
+        type="button"
+        className="phone-cc-add"
+        data-cc-store
+        onClick={() => {
+          onOpenStore();
+          onClose();
+        }}
+      >
+        + agregá apps
+      </button>
     </div>
   );
 }
@@ -971,7 +979,7 @@ export function CompanionApps({
   const [wins, setWins] = useState<LiveWindow[]>([]);
   const [installed, setInstalled] = useState<RaAppId[]>(CORE_INSTALLED_APPS);
   const [storeOpen, setStoreOpen] = useState(false);
-  const [phoneSheet, setPhoneSheet] = useState<"launcher" | "switcher" | null>(null);
+  const [phoneSheet, setPhoneSheet] = useState(false);
 
   useEffect(() => {
     const got = loadInstalledApps();
@@ -997,6 +1005,10 @@ export function CompanionApps({
     saveInstalledApps(installed);
   }, [installed]);
 
+  useEffect(() => {
+    if (!phone) setPhoneSheet(false);
+  }, [phone]);
+
   const visibleIds = order.filter((id) => windowIsVisible(wins, id));
   const active = [...visibleIds].reverse()[0] || null;
 
@@ -1013,6 +1025,28 @@ export function CompanionApps({
       next.push(id);
       return next;
     });
+  }
+
+  function openFromSheet(id: RaAppId) {
+    if (!isAppInstalled(installed, id)) {
+      setStoreOpen(true);
+      setPhoneSheet(false);
+      return;
+    }
+    setWins((prev) => openWindow(prev, id, APP_SEED[id]));
+    setOrder((prev) => {
+      const next = prev.filter((row) => row !== id);
+      next.push(id);
+      return next;
+    });
+    setStoreOpen(false);
+    setPhoneSheet(false);
+  }
+
+  function goHome() {
+    setStoreOpen(false);
+    setPhoneSheet(false);
+    setWins((prev) => prev.map((win) => ({ ...win, minimized: true })));
   }
 
   useEffect(() => {
@@ -1098,20 +1132,19 @@ export function CompanionApps({
         installedIds={installed}
         visibleIds={visibleIds}
         phone={phone}
-        launcherOpen={phoneSheet !== null}
+        launcherOpen={phoneSheet}
         onPick={pick}
         onOpenStore={() => setStoreOpen(true)}
-        onToggleLauncher={() => setPhoneSheet((cur) => (cur === "launcher" ? null : "launcher"))}
-        onToggleSwitcher={() => setPhoneSheet((cur) => (cur === "switcher" ? null : "switcher"))}
+        onToggleLauncher={() => setPhoneSheet((cur) => !cur)}
       />
-      {phone && phoneSheet ? (
+      {phoneSheet ? (
         <PhoneLauncher
           installedIds={installed}
           visibleIds={visibleIds}
-          mode={phoneSheet}
-          onPick={pick}
+          onPick={openFromSheet}
           onOpenStore={() => setStoreOpen(true)}
-          onClose={() => setPhoneSheet(null)}
+          onHome={goHome}
+          onClose={() => setPhoneSheet(false)}
         />
       ) : null}
       {storeOpen ? (
