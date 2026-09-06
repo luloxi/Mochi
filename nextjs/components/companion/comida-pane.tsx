@@ -63,7 +63,7 @@ function Stars({
   value,
   onPick,
 }: {
-  value: number | null;
+  value: StarRating | null;
   onPick: (n: StarRating) => void;
 }) {
   return (
@@ -99,7 +99,7 @@ function RecipeCard({
   onFav: (n: StarRating) => void;
   onLib: () => void;
   onEat: (n: StarRating | null) => void;
-  stars: number | null;
+  stars: StarRating | null;
 }) {
   return (
     <article className="comida-card" data-comida-recipe={recipe.id} data-slot={recipe.slot}>
