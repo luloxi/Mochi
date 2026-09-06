@@ -1422,3 +1422,124 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 .ra-links a {
   color: var(--c-ink);
 }
+
+.comida-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comida-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff6ee;
+  padding-bottom: 4px;
+}
+
+.comida-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 2px solid var(--c-ink);
+  border-radius: 12px;
+  background: var(--c-gold);
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.comida-banner button {
+  border: 2px solid var(--c-ink);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.comida-card {
+  border: 2px solid var(--c-ink);
+  border-radius: 12px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  background: #fff;
+}
+
+.comida-card header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.comida-card header span,
+.comida-k {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.comida-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comida-check,
+.comida-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.comida-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.comida-stars button {
+  border: 0;
+  background: transparent;
+  color: var(--c-ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.comida-preview {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border: 2px solid var(--c-ink);
+  border-radius: 12px;
+}
+
+.comida-cook {
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+  flex: 1;
+}
+
+.comida-log {
+  min-height: 120px;
+  max-height: 220px;
+  border: 2px solid var(--c-ink);
+  border-radius: 12px;
+  padding: 8px;
+  background: #fff;
+}

@@ -848,6 +848,10 @@ describe("mini app store + maximize", () => {
     assert.equal(isAppInstalled(withPomo, "pomo"), true);
     assert.deepEqual(uninstallApp(withPomo, "boards"), withPomo); // cannot remove core
     assert.deepEqual(uninstallApp(withPomo, "pomo"), ["boards"]);
+    const withComida = installApp(base, "comida");
+    assert.equal(isAppInstalled(withComida, "comida"), true);
+    assert.equal(CORE_INSTALLED_APPS.includes("comida"), false);
+    assert.deepEqual(uninstallApp(withComida, "comida"), ["boards"]);
   });
 
   it("desktop maximize restores previous geometry", () => {
@@ -877,6 +881,12 @@ describe("mini app store + maximize", () => {
     assert.match(win, /data-win-min/);
     assert.match(css, /\.phone-control-center/);
     assert.match(css, /\.miniapp-window\.is-maximized/);
+    assert.match(apps, /comida: \{ w: 360, h: 520 \}/);
+    assert.match(apps, /from "@\/components\/companion\/comida-pane"/);
+    assert.match(apps, /APP_BLURBS[\s\S]*comida:/);
+    assert.match(apps, /id === "comida"\) return <ComidaPane/);
+    assert.equal(RA_APPS.some((app) => app.id === "comida"), true);
+    assert.equal(RA_APPS.find((app) => app.id === "comida")?.label, "comida");
   });
 });
 
@@ -1553,6 +1563,8 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.equal(resolveMiniappId("tomate"), "pomo");
     assert.equal(resolveMiniappId("tareas"), "boards");
     assert.equal(resolveMiniappId("ruido"), "radio");
+    assert.equal(resolveMiniappId("comida"), "comida");
+    assert.equal(resolveMiniappId("recetas"), "comida");
   });
 
   it("Nimbo tool-call adds Flores to Traer in naranja and does not answer only Ra está acá", async () => {
@@ -1682,7 +1694,7 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.equal(turn.did, "need-trello");
   });
 
-  it("open_miniapp maps tomate notas video ruido tareas", async () => {
+  it("open_miniapp maps tomate notas video ruido tareas comida", async () => {
     const tomate = await executeNimboTool({ id: "c1", name: "open_miniapp", arguments: { id: "tomate" } }, {}, fetch);
     assert.equal(tomate.openApp, "pomo");
     const tareas = await executeNimboTool({ id: "c2", name: "open_miniapp", arguments: { id: "tareas" } }, {}, fetch);
@@ -1693,6 +1705,8 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.equal(notas.openApp, "notas");
     const video = await executeNimboTool({ id: "c5", name: "open_miniapp", arguments: { id: "video" } }, {}, fetch);
     assert.equal(video.openApp, "video");
+    const comida = await executeNimboTool({ id: "c6", name: "open_miniapp", arguments: { id: "comida" } }, {}, fetch);
+    assert.equal(comida.openApp, "comida");
   });
 
   it("pet click toggles the bubble; placement stays horizontal and near the pet", () => {

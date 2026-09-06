@@ -177,6 +177,9 @@ export function localHelpReply(userText: string, seat: PersonId): string {
   if (/\b(arrastr|drag|pared|techo|piso|camin|tir|graved|rebot)\b/.test(t)) {
     return "Arrastralos. Si los tirás rápido caen y rebotan. Si vas lento se agarran a la pared o al techo y siguen.";
   }
+  if (/\b(comida|receta|cocina|heladera)\b/.test(t)) {
+    return "Comida está en la tienda. Instalála y sale en el dock: perfiles, recetas de hoy y chat para cocinar.";
+  }
   if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono|dock)\b/.test(t)) {
     return "Instalá apps en la tienda para que aparezcan en el dock. En el celu, el centro abre el launcher; con algo abierto, el switcher cambia de app.";
   }

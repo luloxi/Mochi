@@ -52,6 +52,7 @@ import {
   type LiveWindow,
 } from "@/lib/companion/windows";
 import { DeskWindow, usePhone } from "@/components/companion/companion-window";
+import { ComidaPane } from "@/components/companion/comida-pane";
 
 const APP_SEED: Record<RaAppId, { w: number; h: number }> = {
   pomo: { w: 260, h: 220 },
@@ -59,6 +60,7 @@ const APP_SEED: Record<RaAppId, { w: number; h: number }> = {
   video: { w: 360, h: 320 },
   radio: { w: 300, h: 240 },
   boards: { w: 960, h: 680 },
+  comida: { w: 360, h: 520 },
 };
 
 function formatRemain(sec: number) {
@@ -73,6 +75,7 @@ const APP_BLURBS: Record<RaAppId, string> = {
   video: "youtube embebido",
   radio: "ruido de fondo",
   boards: "tareas en Ra (Trello)",
+  comida: "recetas y cocina de a dos",
 };
 
 function AppStorePane({
@@ -1057,6 +1060,7 @@ export function CompanionApps({
     if (id === "notas") return <NotasPane />;
     if (id === "video") return <VideoPane />;
     if (id === "radio") return <RuidoPane />;
+    if (id === "comida") return <ComidaPane />;
     return (
       <RaPane
         board={board}

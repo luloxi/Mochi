@@ -12,9 +12,13 @@ export type LlmPick = {
   model: string | null;
 };
 
+export type LlmContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export type LlmChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
-  content?: string | null;
+  content?: string | null | LlmContentPart[];
   tool_calls?: unknown[];
   tool_call_id?: string;
   name?: string;
@@ -34,7 +38,7 @@ Katho es ella. Lulox es él. Juntos son Katho y Lulox, los dos.
 No uses lenguaje inclusivo. Nada de esas formas raras.
 Usá las herramientas. Si te piden una tarjeta en Ra, llamá add_ra_card (lista y color si los dicen).
 Si preguntan qué hay en el tablero, llamá list_ra_board.
-Si piden tomate, notas, video, ruido o tareas, llamá open_miniapp.
+Si piden tomate, notas, video, ruido, tareas o comida, llamá open_miniapp.
 Si Ra no está, decí "Ra no está." No finjas que agregaste nada.
 Nunca contestes solo un saludo si te pidieron una tarea.
 No mandes recados, no pongas videos, no mandes a nadie a otro sitio.
@@ -91,6 +95,8 @@ export function buildLlmRequest(args: {
   messages: LlmChatMessage[];
   tools?: unknown[];
   toolChoice?: "auto" | "required" | "none";
+  maxTokens?: number;
+  temperature?: number;
 }): {
   url: string;
   method: "POST";
@@ -101,8 +107,8 @@ export function buildLlmRequest(args: {
   const body: Record<string, unknown> = {
     model: args.pick.model,
     messages: args.messages,
-    temperature: 0.6,
-    max_tokens: 280,
+    temperature: args.temperature ?? 0.6,
+    max_tokens: args.maxTokens ?? 280,
   };
   if (args.tools && args.tools.length) {
     body.tools = args.tools;
@@ -163,6 +169,8 @@ export async function completeLlmRound(
     fetchImpl?: typeof fetch;
     tools?: unknown[];
     toolChoice?: "auto" | "required" | "none";
+    maxTokens?: number;
+    temperature?: number;
   } = {},
 ): Promise<{ provider: LlmProviderId; text: string; toolCalls: LlmToolCall[]; rawMessage: unknown }> {
   const env = args.env ?? process.env;
@@ -173,6 +181,8 @@ export async function completeLlmRound(
     messages,
     tools: args.tools,
     toolChoice: args.toolChoice,
+    maxTokens: args.maxTokens,
+    temperature: args.temperature,
   });
   if (!req) return { provider: "none", text: "", toolCalls: [], rawMessage: null };
   const res = await fetchImpl(req.url, {

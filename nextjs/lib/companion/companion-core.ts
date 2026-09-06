@@ -4,9 +4,9 @@ export type PersonId = "katho" | "lulox";
 
 export type PetMood = "idle" | "listening" | "thinking" | "happy" | "sleepy" | "delivering";
 
-export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes" | "boards";
+export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes" | "boards" | "comida";
 
-export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes", "boards"];
+export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes", "boards", "comida"];
 
 export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "pomo", label: "Pomodoro" },
@@ -16,9 +16,10 @@ export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "dm", label: "DM" },
   { id: "agentes", label: "Agentes" },
   { id: "boards", label: "Tableros" },
+  { id: "comida", label: "Comida" },
 ];
 
-export const RA_APP_IDS = ["pomo", "notas", "video", "radio", "boards"] as const;
+export const RA_APP_IDS = ["pomo", "notas", "video", "radio", "boards", "comida"] as const;
 export type RaAppId = (typeof RA_APP_IDS)[number];
 export const RA_APPS: { id: RaAppId; label: string }[] = [
   { id: "pomo", label: "tomate" },
@@ -26,6 +27,7 @@ export const RA_APPS: { id: RaAppId; label: string }[] = [
   { id: "video", label: "video" },
   { id: "radio", label: "ruido" },
   { id: "boards", label: "tareas" },
+  { id: "comida", label: "comida" },
 ];
 
 export type CompanionMsg = {
@@ -86,6 +88,7 @@ export const COMPANION_STORAGE = {
   pomo: "mochi-companion-pomo-v1",
   dueFired: "mochi-companion-due-fired-v1",
   raSnapshot: "mochi-companion-ra-v1",
+  comida: "mochi-companion-comida-v1",
 } as const;
 
 /** Always available: tareas (Ra). Other miniapps come from the tienda. */
@@ -115,6 +118,12 @@ const MINIAPP_ALIASES: Record<string, RaAppId> = {
   boards: "boards",
   ra: "boards",
   tablero: "boards",
+  comida: "comida",
+  recetas: "comida",
+  receta: "comida",
+  cocina: "comida",
+  food: "comida",
+  meal: "comida",
 };
 
 export function resolveMiniappId(raw: string): RaAppId | null {
