@@ -4,9 +4,9 @@ export type PersonId = "katho" | "lulox";
 
 export type PetMood = "idle" | "listening" | "thinking" | "happy" | "sleepy" | "delivering";
 
-export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes" | "boards" | "comida";
+export type DeskAppId = "pomo" | "notas" | "video" | "radio" | "dm" | "agentes" | "boards" | "comida" | "agenda";
 
-export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes", "boards", "comida"];
+export const DESK_APP_IDS: DeskAppId[] = ["pomo", "notas", "video", "radio", "dm", "agentes", "boards", "comida", "agenda"];
 
 export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "pomo", label: "Pomodoro" },
@@ -17,6 +17,7 @@ export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "agentes", label: "Agentes" },
   { id: "boards", label: "Tableros" },
   { id: "comida", label: "Comida" },
+  { id: "agenda", label: "Agenda" },
 ];
 
 export const RA_APP_IDS = ["pomo", "notas", "video", "radio", "boards", "comida", "agenda"] as const;
