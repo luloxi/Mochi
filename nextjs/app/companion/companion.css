@@ -800,10 +800,11 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 2px solid var(--c-ink);
-  border-radius: 14px;
+  border-radius: 16px;
   background: #fff;
+  box-shadow: 2px 2px 0 rgba(20, 12, 24, 0.08);
 }
 
 .app-store-row strong {
@@ -834,10 +835,11 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 
 .phone-cc-chrome {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 8px 10px;
-  background: #f4a24c;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #ffb45c 0%, #f4a24c 100%);
   color: #1a1208;
   font-size: 12px;
   font-weight: 800;
@@ -850,8 +852,8 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
 .phone-cc-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 12px;
 }
 
 .phone-cc-add {
@@ -1591,4 +1593,103 @@ html:has([data-companion-surface]) [class*="site-mochi-config"] {
   border-radius: 12px;
   padding: 8px;
   background: #fff;
+}
+
+
+.app-store-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-store-icon {
+  font-size: 22px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.phone-cc-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.phone-cc-titles strong {
+  font-size: 13px;
+}
+
+.phone-cc-titles span {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.phone-cc-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  border-radius: 16px;
+  border: 2px solid var(--c-ink);
+  background: #fff;
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 10px 8px;
+}
+
+.phone-cc-tile.is-on {
+  background: #ffe7c2;
+  box-shadow: 3px 3px 0 var(--c-ink);
+}
+
+.phone-cc-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.miniapp-win {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0a6e94;
+}
+
+.miniapp-hint,
+.miniapp-empty {
+  margin: 0 0 8px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.agenda-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agenda-row {
+  padding: 8px 10px;
+  border: 2px solid var(--c-ink);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.agenda-row strong {
+  display: block;
+  font-size: 14px;
+}
+
+.agenda-row span {
+  display: block;
+  font-size: 11px;
+  opacity: 0.8;
 }

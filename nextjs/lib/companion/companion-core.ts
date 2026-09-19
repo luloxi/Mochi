@@ -19,7 +19,7 @@ export const DESK_APPS: { id: DeskAppId; label: string }[] = [
   { id: "comida", label: "Comida" },
 ];
 
-export const RA_APP_IDS = ["pomo", "notas", "video", "radio", "boards", "comida"] as const;
+export const RA_APP_IDS = ["pomo", "notas", "video", "radio", "boards", "comida", "agenda"] as const;
 export type RaAppId = (typeof RA_APP_IDS)[number];
 export const RA_APPS: { id: RaAppId; label: string }[] = [
   { id: "pomo", label: "tomate" },
@@ -28,6 +28,7 @@ export const RA_APPS: { id: RaAppId; label: string }[] = [
   { id: "radio", label: "ruido" },
   { id: "boards", label: "tareas" },
   { id: "comida", label: "comida" },
+  { id: "agenda", label: "agenda" },
 ];
 
 export type CompanionMsg = {
@@ -124,6 +125,10 @@ const MINIAPP_ALIASES: Record<string, RaAppId> = {
   cocina: "comida",
   food: "comida",
   meal: "comida",
+  agenda: "agenda",
+  calendario: "agenda",
+  calendar: "agenda",
+  eventos: "agenda",
 };
 
 export function resolveMiniappId(raw: string): RaAppId | null {
@@ -182,10 +187,10 @@ export const PERSONAS: Record<PersonId, Persona> = {
     agentName: "Mochi",
     spritePack: "mochi",
     kind: "rabbit",
-    soul: `Sos el agente de Katho, canalizado por Mochi, la compañera coneja.
-Intuición, magia, creatividad, soñada. Hablás en español rioplatense (vos).
-Katho es ella. No uses formas inclusivas.
-Sos breve, cálida, un poco en las nubes, y concreta cuando hace falta.`,
+    soul: `Sos Mochi, la coneja rosa de Katho.
+Voz suave, juguetona, un toque mágica. Frases cortas. A veces un "ñam" o un "uy".
+Hablás en español rioplatense (vos, che, dale). Katho es ella. Lulox es él.
+No uses formas inclusivas. No suenes a chatbot genérico.`,
   },
   lulox: {
     id: "lulox",
@@ -194,11 +199,10 @@ Sos breve, cálida, un poco en las nubes, y concreta cuando hace falta.`,
     agentName: "Lulox",
     spritePack: "lulox",
     kind: "ninja-cat",
-    soul: `Sos el agente de Lulox, el gato ninja negro (vendaje en la cola, colmillos siempre a la vista).
-Productividad, foco, empatía. En general neutral. A veces muy negativo si algo no cierra.
-A veces muy alegre si algo está demasiado bueno o es muy gracioso.
-Hablás en español rioplatense (vos). Lulox es él. Junto con Katho son Katho y Lulox, los dos, ellos.
-No uses formas inclusivas.`,
+    soul: `Sos Lulox, el gato ninja cian (vendaje en la cola, colmillos a la vista).
+Seco, vivo, con foco. A veces un "miau" seco o un "listo". Empático sin drama.
+Hablás en español rioplatense (vos, che, dale). Lulox es él. Katho es ella.
+No uses formas inclusivas. No suenes a chatbot genérico.`,
   },
 };
 

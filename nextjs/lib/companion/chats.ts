@@ -144,16 +144,27 @@ export function launchTargetFor(source: "nimbo" | "ra-pet" | "dock", appId?: str
 }
 
 export const HELP_SOUL = `Sos la ayuda del escritorio Compañera.
-Hablás en español rioplatense (vos, che, dale). Corto. Concreto.
+Hablás en español rioplatense (vos, che, dale). Corto. Concreto. Jugá un poco con la voz del bicho.
 Katho es ella. Lulox es él. Los dos. Nada de lenguaje inclusivo.
 Explicá la app, no des discurso de producto.
-Hay tres bichos: Mochi (coneja de Katho), Lulox (gato ninja) y Nimbo (nubecita IA).
+Hay tres bichos: Mochi (coneja rosa de Katho), Lulox (gato ninja cian) y Nimbo (nubecita dorada IA).
 Tu bicho te explica. El de la otra persona es el chat humano.
 Nimbo es el chat de la IA. Las apps salen del dock de abajo al centro, no tocando a Nimbo.
 Si Ra no está, la app Ra del dock muestra cómo conectar la casa. No hay tablero embebido.
 Se arrastran. Tiro rápido: caen con gravedad y rebotan en las paredes. Tiro lento: se agarran a la pared o al techo y siguen.
 En el celu, el botón grande (+) abre el launcher. Ahí elegís qué app ver, volvés a casa o agregás apps de la tienda. Escritorio = los tres bichos.
+Agenda lista eventos de Google Calendar (solo lectura) cuando la conectás.
 Puntitos: verde presente, amarillo idle, rojo desconectado. Hover (o dejar el dedo) dice el nombre, de quién es y el estado.`;
+
+export const MOCHI_HELP_SOUL = `${HELP_SOUL}
+Ahora sos Mochi, la coneja rosa. Dulce, soñadora, un toque traviesa.
+Frases cortitas. A veces "ñam", "uy" o "daleee". Nunca largas.
+Si no sabés, preguntá una sola cosa.`;
+
+export const LULOX_HELP_SOUL = `${HELP_SOUL}
+Ahora sos Lulox, el gato ninja. Seco, vivo, con foco.
+Frases cortitas. A veces "miau", "listo" o "de una". Nunca largas.
+Si no sabés, preguntá una sola cosa.`;
 
 const INCLUSIVE = /\b(todes|todxs|ellxs|elles|amigues|nosotres|invitade|invitades)\b/i;
 
@@ -161,12 +172,18 @@ export function localHelpReply(userText: string, seat: PersonId): string {
   const t = userText.toLowerCase();
   const own = seat === "katho" ? "Mochi" : "Lulox";
   const other = seat === "katho" ? "Lulox" : "Mochi";
+  const vibe = seat === "katho" ? "Ñam." : "Miau.";
   if (INCLUSIVE.test(t)) return "Katho ella, Lulox él. Los dos.";
   if (/\b(hola|holis|buenas|ayuda|help)\b/.test(t)) {
     return `Hola. Soy ${own}. Te explico la app. ${other} es el chat humano. Nimbo es la IA de Ra.`;
   }
   if (/\b(conectar|casa)\b/.test(t)) {
-    return "Ra es la casa. En el dock de abajo abrí Ra: tres pasos. Tocá conectar y dale que sí.";
+    return seat === "katho"
+      ? "Ra es la casa. Abrí tareas en el dock. Tres pasitos y dale que sí."
+      : "Ra es la casa. En el dock abrí tareas. Tres pasos. Conectá y listo.";
+  }
+  if (/\b(agenda|calendario|evento)\b/.test(t)) {
+    return `${vibe} Agenda está en la tienda. Instalála, conectá Google y ves lo de hoy.`;
   }
   if (/\b(nimbo|ia|ra|tarea|tomate|pomo)\b/.test(t)) {
     return "Nimbo es el chat de la IA. Hablale de Ra, el tomate o una tarea. Las apps están en el dock de abajo, no en Nimbo.";
@@ -180,18 +197,21 @@ export function localHelpReply(userText: string, seat: PersonId): string {
   if (/\b(comida|receta|cocina|heladera)\b/.test(t)) {
     return "Comida está en la tienda. Instalála y sale en el dock: perfiles, recetas de hoy y chat para cocinar.";
   }
-  if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono|dock)\b/.test(t)) {
+  if (/\b(app|mini|ra |botón|boton|foco|celu|teléfono|telefono|dock|tienda|launcher)\b/.test(t)) {
     return "Instalá apps en la tienda. En el celu, el botón grande (+) abre el launcher: elegís la app, volvés a casa o agregás más.";
   }
   if (/\b(carita|presenc|verde|rojo|amarillo|desconect|puntit|hover)\b/.test(t)) {
     return "Puntitos: verde presente, amarillo idle, rojo desconectado. El hover dice el nombre, de quién es y el estado.";
   }
-  return `Soy ${own}, la ayuda. ${other} es el chat con la otra persona. Nimbo es Ra. Tocá y preguntá.`;
+  return seat === "katho"
+    ? `Soy Mochi, la ayuda. ${other} es el chat humano. Nimbo es Ra. Preguntame. ${vibe}`
+    : `Soy Lulox, la ayuda. ${other} es el chat humano. Nimbo es Ra. Preguntame. ${vibe}`;
 }
 
 export function helpSystemMessages(seat: PersonId): { role: "system"; content: string }[] {
   const who = seat === "katho" ? "Katho" : "Lulox";
-  return [{ role: "system", content: `${HELP_SOUL}\nEstás hablando con ${who}.` }];
+  const soul = seat === "katho" ? MOCHI_HELP_SOUL : LULOX_HELP_SOUL;
+  return [{ role: "system", content: `${soul}\nEstás hablando con ${who}.` }];
 }
 
 /** @deprecated use nimboCanDrive */

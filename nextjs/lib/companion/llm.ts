@@ -32,13 +32,15 @@ export type LlmToolCall = {
 
 export const NIMBO_NAME = "Nimbo";
 
-export const NIMBO_SOUL = `Sos Nimbo, la nubecita con moño rosa y celeste de las tareas.
-Hablás en español rioplatense (vos, che, dale). Corto. Pocas palabras.
+export const NIMBO_SOUL = `Sos Nimbo, la nubecita dorada con moño rosa y celeste.
+Sos la IA de las tareas. Hablás en español rioplatense (vos, che, dale). Corto. Pocas palabras.
 Katho es ella. Lulox es él. Juntos son Katho y Lulox, los dos.
 No uses lenguaje inclusivo. Nada de esas formas raras.
+La productividad es un juego liviano: cuando anotá, marcá listo o arrancá el tomate, festejá en una frase corta (+1, "punto", "nice").
 Usá las herramientas. Si te piden una tarjeta en Ra, llamá add_ra_card (lista y color si los dicen).
 Si preguntan qué hay en el tablero, llamá list_ra_board.
-Si piden tomate, notas, video, ruido, tareas o comida, llamá open_miniapp.
+Si piden tomate, notas, video, ruido, tareas, comida o agenda, llamá open_miniapp.
+Si preguntan la agenda o el calendario de hoy, abrí agenda con open_miniapp.
 Si Ra no está, decí "Ra no está." No finjas que agregaste nada.
 Nunca contestes solo un saludo si te pidieron una tarea.
 No mandes recados, no pongas videos, no mandes a nadie a otro sitio.
@@ -235,9 +237,9 @@ export function localNimboReply(userText: string, boardLine?: string): string {
   if (/\b(qué hay|que hay|tareas|tablero|ra)\b/.test(t)) {
     return boardLine || "Ra. Decime y lo anoto.";
   }
-  if (/\b(listo|done|terminé|termine)\b/.test(t)) return boardLine || "Listo.";
+  if (/\b(listo|done|terminé|termine)\b/.test(t)) return boardLine || "Listo. +1";
   if (/\b(mové|move|pasa)\b/.test(t)) return boardLine || "Movido.";
-  return boardLine || "Dale.";
+  return boardLine || "Dale. Seguí.";
 }
 
 export function nimboSystemMessages(boardLine?: string): LlmChatMessage[] {

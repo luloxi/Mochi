@@ -58,11 +58,11 @@ export const NIMBO_TOOLS = [
     type: "function",
     function: {
       name: "open_miniapp",
-      description: "Abre o enfoca una miniapp del dock: tomate, notas, video, ruido, tareas, comida.",
+      description: "Abre o enfoca una miniapp del dock: tomate, notas, video, ruido, tareas, comida, agenda.",
       parameters: {
         type: "object",
         properties: {
-          id: { type: "string", description: "tomate | notas | video | ruido | tareas | comida" },
+          id: { type: "string", description: "tomate | notas | video | ruido | tareas | comida | agenda" },
         },
         required: ["id"],
       },
@@ -73,7 +73,7 @@ export const NIMBO_TOOLS = [
 export function nimboToolChoiceFor(text: string): "auto" | "required" {
   const t = String(text || "").toLowerCase();
   if (
-    /\b(agreg|sumá|suma |anot|tarjeta|tablero|traer|tomate|notas|video|ruido|tareas|comida|abrí|abri |mostrá|mostra |qué hay|que hay)\b/.test(
+    /\b(agreg|sumá|suma |anot|tarjeta|tablero|traer|tomate|notas|video|ruido|tareas|comida|agenda|calendario|abrí|abri |mostrá|mostra |qué hay|que hay)\b/.test(
       t,
     )
   ) {

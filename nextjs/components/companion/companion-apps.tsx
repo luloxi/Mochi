@@ -53,6 +53,11 @@ import {
 } from "@/lib/companion/windows";
 import { DeskWindow, usePhone } from "@/components/companion/companion-window";
 import { ComidaPane } from "@/components/companion/comida-pane";
+import Script from "next/script";
+import {
+  GOOGLE_CALENDAR_READONLY_SCOPE,
+  type CalendarEventRow,
+} from "@/lib/companion/calendar";
 
 const APP_SEED: Record<RaAppId, { w: number; h: number }> = {
   pomo: { w: 260, h: 220 },
@@ -61,6 +66,7 @@ const APP_SEED: Record<RaAppId, { w: number; h: number }> = {
   radio: { w: 300, h: 240 },
   boards: { w: 960, h: 680 },
   comida: { w: 360, h: 520 },
+  agenda: { w: 320, h: 420 },
 };
 
 function formatRemain(sec: number) {
@@ -70,13 +76,26 @@ function formatRemain(sec: number) {
 }
 
 const APP_BLURBS: Record<RaAppId, string> = {
-  pomo: "timer de foco",
-  notas: "lista corta local",
-  video: "youtube embebido",
-  radio: "ruido de fondo",
-  boards: "tareas en Ra (Trello)",
+  pomo: "tomate de foco",
+  notas: "lista corta",
+  video: "un video de fondo",
+  radio: "ruido suave",
+  boards: "tareas en Ra",
   comida: "recetas y cocina de a dos",
+  agenda: "lo de hoy en Google",
 };
+
+const APP_ICONS: Record<RaAppId, string> = {
+  pomo: "🍅",
+  notas: "✏️",
+  video: "▶️",
+  radio: "📻",
+  boards: "📋",
+  comida: "🍳",
+  agenda: "📅",
+};
+
+const CAL_TOKEN_KEY = "mochi-companion-cal-token-v1";
 
 function AppStorePane({
   installed,
@@ -90,28 +109,33 @@ function AppStorePane({
   return (
     <div className="miniapp-body app-store" data-miniapp="tienda" data-app-store>
       <p className="miniapp-kicker">tienda</p>
-      <p className="app-store-hint">Instalá para que aparezcan en el dock. Tareas queda siempre.</p>
+      <p className="app-store-hint">Elegí qué sumar al dock. Tareas ya está.</p>
       <ul className="app-store-list">
         {RA_APPS.map((app) => {
           const on = isAppInstalled(installed, app.id);
           const core = CORE_INSTALLED_APPS.includes(app.id);
           return (
             <li key={app.id} className="app-store-row" data-store-app={app.id} data-installed={on ? "true" : "false"}>
-              <div>
-                <strong>{app.label}</strong>
-                <span>{APP_BLURBS[app.id]}</span>
+              <div className="app-store-copy">
+                <span className="app-store-icon" aria-hidden>
+                  {APP_ICONS[app.id]}
+                </span>
+                <div>
+                  <strong>{app.label}</strong>
+                  <span>{APP_BLURBS[app.id]}</span>
+                </div>
               </div>
               {core ? (
                 <button type="button" className="dock-btn is-on" disabled data-store-core>
-                  core
+                  siempre
                 </button>
               ) : on ? (
                 <button type="button" className="dock-btn" data-store-uninstall={app.id} onClick={() => onUninstall(app.id)}>
-                  desinstalar
+                  sacar
                 </button>
               ) : (
                 <button type="button" className="dock-btn is-on" data-store-install={app.id} onClick={() => onInstall(app.id)}>
-                  instalar
+                  sumar
                 </button>
               )}
             </li>
@@ -204,7 +228,10 @@ function PhoneLauncher({
       aria-label="Launcher"
     >
       <header className="phone-cc-chrome">
-        <span>apps</span>
+        <div className="phone-cc-titles">
+          <strong>tus apps</strong>
+          <span>abrí una o sumá más</span>
+        </div>
         <button type="button" className="talk-close" aria-label="Cerrar" onClick={onClose}>
           ×
         </button>
@@ -212,27 +239,33 @@ function PhoneLauncher({
       <div className="phone-cc-grid">
         <button
           type="button"
-          className="dock-btn"
+          className="phone-cc-tile"
           data-cc-home
           onClick={() => {
             onHome();
             onClose();
           }}
         >
-          casa
+          <span className="phone-cc-emoji" aria-hidden>
+            🏠
+          </span>
+          <span>casa</span>
         </button>
         {apps.map((app) => (
           <button
             key={app.id}
             type="button"
-            className={`dock-btn${visibleIds.includes(app.id) ? " is-on" : ""}`}
+            className={`phone-cc-tile${visibleIds.includes(app.id) ? " is-on" : ""}`}
             data-cc-app={app.id}
             onClick={() => {
               onPick(app.id);
               onClose();
             }}
           >
-            {app.label}
+            <span className="phone-cc-emoji" aria-hidden>
+              {APP_ICONS[app.id]}
+            </span>
+            <span>{app.label}</span>
           </button>
         ))}
       </div>
@@ -251,10 +284,164 @@ function PhoneLauncher({
   );
 }
 
+
+function AgendaPane() {
+  const [events, setEvents] = useState<CalendarEventRow[]>([]);
+  const [line, setLine] = useState("Conectá Google para ver lo de hoy.");
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  const clientRef = useRef<{ requestAccessToken: (opts?: { prompt?: string }) => void } | null>(null);
+  const clientId =
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    "253648842852-crcqh36v7bogroqae76f4mchit37nl4i.apps.googleusercontent.com";
+
+  useEffect(() => {
+    let cancelled = false;
+    const boot = () => {
+      const google = (window as unknown as {
+        google?: {
+          accounts?: {
+            oauth2?: {
+              initTokenClient: (opts: {
+                client_id: string;
+                scope: string;
+                prompt?: string;
+                callback: (resp: { access_token?: string; error?: string }) => void;
+              }) => { requestAccessToken: (opts?: { prompt?: string }) => void };
+            };
+          };
+        };
+      }).google;
+      if (!google?.accounts?.oauth2) return false;
+      clientRef.current = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: `openid email profile ${GOOGLE_CALENDAR_READONLY_SCOPE}`,
+        callback: async (resp) => {
+          if (!resp?.access_token) {
+            if (!cancelled) setLine("Probá de nuevo.");
+            return;
+          }
+          try {
+            window.sessionStorage.setItem(CAL_TOKEN_KEY, resp.access_token);
+          } catch {
+            // ignore
+          }
+          await loadEvents(resp.access_token);
+        },
+      });
+      if (!cancelled) setReady(true);
+      return true;
+    };
+    if (boot()) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const id = window.setInterval(() => {
+      if (boot()) window.clearInterval(id);
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [clientId]);
+
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(CAL_TOKEN_KEY) || "";
+      if (saved) void loadEvents(saved);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadEvents(accessToken: string) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/companion/calendar", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken, daysAhead: 3 }),
+      });
+      const json = await res.json().catch(() => null);
+      if (json?.ok && Array.isArray(json.events)) {
+        setEvents(json.events as CalendarEventRow[]);
+        setLine(typeof json.line === "string" ? json.line : "Listo.");
+      } else {
+        setEvents([]);
+        setLine(typeof json?.line === "string" ? json.line : "Pedí permiso otra vez.");
+        if (json?.reason === "forbidden") {
+          try {
+            window.sessionStorage.removeItem(CAL_TOKEN_KEY);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      setLine("Agenda no respondió.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function connect() {
+    clientRef.current?.requestAccessToken({ prompt: "consent" });
+  }
+
+  return (
+    <div className="miniapp-body agenda-pane" data-miniapp="agenda">
+      <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
+      <p className="miniapp-kicker">agenda</p>
+      <p className="app-store-hint">{busy ? "cargando…" : line}</p>
+      <div className="miniapp-row">
+        <button type="button" className="dock-btn is-on" disabled={!ready || busy} onClick={connect} data-agenda-connect>
+          conectar
+        </button>
+        <button
+          type="button"
+          className="dock-btn"
+          disabled={busy}
+          onClick={() => {
+            try {
+              const saved = window.sessionStorage.getItem(CAL_TOKEN_KEY) || "";
+              if (saved) void loadEvents(saved);
+              else connect();
+            } catch {
+              connect();
+            }
+          }}
+          data-agenda-refresh
+        >
+          refrescar
+        </button>
+      </div>
+      <ul className="agenda-list">
+        {events.length === 0 ? <li className="miniapp-empty">sin eventos cerca</li> : null}
+        {events.map((ev) => (
+          <li key={ev.id} className="agenda-row">
+            <strong>{ev.title}</strong>
+            <span>{ev.whenLabel}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function TomatePane() {
   const [clock, setClock] = useState(loadPomo);
+  const [winLine, setWinLine] = useState("");
   useEffect(() => {
-    const tick = () => setClock(loadPomo());
+    const tick = () => {
+      const next = loadPomo();
+      setClock(next);
+      if (next.running && next.remaining <= 0) {
+        setWinLine("Listo. +1 tomate 🍅");
+      }
+    };
     tick();
     const id = window.setInterval(tick, 500);
     return () => window.clearInterval(id);
@@ -263,11 +450,13 @@ function TomatePane() {
     <div className="miniapp-body" data-miniapp="pomo">
       <p className="miniapp-kicker">tomate</p>
       <p className="miniapp-clock">{formatRemain(clock.remaining || clock.duration)}</p>
+      {winLine ? <p className="miniapp-win">{winLine}</p> : <p className="miniapp-hint">25 min. Nimbo festeja cuando cerrás uno.</p>}
       <div className="miniapp-row">
         <button
           type="button"
           onClick={() => {
             applyNimboClock("start", 25);
+            setWinLine("");
             setClock(loadPomo());
           }}
         >
@@ -295,7 +484,7 @@ function NotasPane() {
     <div className="miniapp-body" data-miniapp="notas">
       <p className="miniapp-kicker">notas</p>
       <ul className="miniapp-list">
-        {rows.length === 0 ? <li>vacío</li> : null}
+        {rows.length === 0 ? <li className="miniapp-empty">nada aún. sumá una ✨</li> : null}
         {rows.map((row) => (
           <li key={row.id}>
             <label>
@@ -1095,6 +1284,7 @@ export function CompanionApps({
     if (id === "video") return <VideoPane />;
     if (id === "radio") return <RuidoPane />;
     if (id === "comida") return <ComidaPane />;
+    if (id === "agenda") return <AgendaPane />;
     return (
       <RaPane
         board={board}
@@ -1150,7 +1340,7 @@ export function CompanionApps({
       {storeOpen ? (
         <DeskWindow
           id="tienda"
-          title="tienda"
+          title="tienda de apps"
           phone={phone}
           pos={storePos}
           variant="app"
