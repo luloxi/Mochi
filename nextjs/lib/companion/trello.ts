@@ -492,7 +492,8 @@ export function parseRaIntent(raw: string): RaIntent {
       "las cards",
       "las tarjetas",
     ]) &&
-    !includesAny(lower, ["agreg", "nueva", "sumá", "suma", "mové", "move", "listo ", "terminé"])
+    !includesAny(lower, ["agreg", "nueva", "sumá", "suma", "mové", "move", "listo ", "terminé"]) &&
+    !includesAny(lower, ["agenda", "calendario", "calendar", "evento"])
   ) {
     return { type: "list" };
   }

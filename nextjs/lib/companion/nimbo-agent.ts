@@ -2,7 +2,7 @@
  * Nimbo turn: OpenAI/xAI with tools so it actually does Ra + miniapps.
  */
 
-import { RA_APPS, resolveMiniappId, type RaAppId } from "./companion-core";
+import { RA_APPS, guessOpenMiniapp, resolveMiniappId, type RaAppId } from "./companion-core";
 import { parseNimboIntent, type NimboIntent } from "./chats";
 import {
   completeLlmRound,
@@ -261,6 +261,27 @@ export async function runNimboTurn(args: {
 
   if (usedTools.length && isOnlyCannedRaGreeting(reply)) {
     reply = lastToolLine || line || "Dale.";
+  }
+
+  if (!openApp) {
+    const guessedOpen = guessOpenMiniapp(text);
+    if (guessedOpen) {
+      openApp = guessedOpen;
+      did = "open-app";
+      const label = RA_APPS.find((a) => a.id === guessedOpen)?.label || guessedOpen;
+      const openLine = `Abrí ${label}.`;
+      if (
+        !reply ||
+        isOnlyCannedRaGreeting(reply) ||
+        reply === "Ra no está." ||
+        reply.startsWith("Ra no está") ||
+        reply === line
+      ) {
+        reply = openLine;
+      }
+      if (!usedTools.includes("open_miniapp")) usedTools.push("open_miniapp");
+      lastToolLine = openLine;
+    }
   }
 
   return {

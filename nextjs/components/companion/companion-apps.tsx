@@ -109,7 +109,7 @@ function AppStorePane({
   return (
     <div className="miniapp-body app-store" data-miniapp="tienda" data-app-store>
       <p className="miniapp-kicker">tienda</p>
-      <p className="app-store-hint">Elegí qué sumar al dock. Tareas ya está.</p>
+      <p className="app-store-hint">Elegí qué sumar al dock. Tareas ya está. Agenda es Google Calendar.</p>
       <ul className="app-store-list">
         {RA_APPS.map((app) => {
           const on = isAppInstalled(installed, app.id);
@@ -171,13 +171,13 @@ function AppDock({
         className={`dock-btn ra-switch phone-launcher-btn${launcherOpen ? " is-on" : ""}`}
         data-phone-center
         data-ra-switch
-        aria-label="Launcher"
+        aria-label="tus apps"
         aria-expanded={launcherOpen}
         onClick={onToggleLauncher}
       >
         +
       </button>
-      <nav className="app-dock-nav" data-ra-nav aria-label="Apps" hidden={phone} aria-hidden={phone}>
+      <nav className="app-dock-nav" data-ra-nav aria-label="tus apps" hidden={phone} aria-hidden={phone}>
         {dockApps.map((app) => {
           const open = visibleIds.includes(app.id);
           return (
@@ -225,7 +225,7 @@ function PhoneLauncher({
       data-phone-control-center
       data-mode="launcher"
       role="dialog"
-      aria-label="Launcher"
+      aria-label="tus apps"
     >
       <header className="phone-cc-chrome">
         <div className="phone-cc-titles">
@@ -287,7 +287,7 @@ function PhoneLauncher({
 
 function AgendaPane() {
   const [events, setEvents] = useState<CalendarEventRow[]>([]);
-  const [line, setLine] = useState("Conectá Google para ver lo de hoy.");
+  const [line, setLine] = useState("Conectá Google Calendar para ver lo de hoy.");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const clientRef = useRef<{ requestAccessToken: (opts?: { prompt?: string }) => void } | null>(null);
@@ -392,13 +392,16 @@ function AgendaPane() {
   }
 
   return (
-    <div className="miniapp-body agenda-pane" data-miniapp="agenda">
+    <div className="miniapp-body agenda-pane" data-miniapp="agenda" data-agenda-google>
       <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       <p className="miniapp-kicker">agenda</p>
-      <p className="app-store-hint">{busy ? "cargando…" : line}</p>
+      <p className="app-store-hint">Google Calendar (solo lectura)</p>
+      <p className="app-store-hint" data-agenda-line>
+        {busy ? "cargando…" : line}
+      </p>
       <div className="miniapp-row">
         <button type="button" className="dock-btn is-on" disabled={!ready || busy} onClick={connect} data-agenda-connect>
-          conectar
+          conectar Google
         </button>
         <button
           type="button"
@@ -418,6 +421,11 @@ function AgendaPane() {
           refrescar
         </button>
       </div>
+      {!ready ? (
+        <p className="miniapp-empty" data-agenda-waiting>
+          Cargando Google…
+        </p>
+      ) : null}
       <ul className="agenda-list">
         {events.length === 0 ? <li className="miniapp-empty">sin eventos cerca</li> : null}
         {events.map((ev) => (
@@ -1309,10 +1317,10 @@ export function CompanionApps({
   const storePos: LiveWindow = {
     id: "tienda",
     x: 72,
-    y: 96,
+    y: 72,
     z: 55,
-    w: 320,
-    h: 420,
+    w: 340,
+    h: 540,
     minimized: false,
   };
 

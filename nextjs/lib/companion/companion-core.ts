@@ -28,8 +28,8 @@ export const RA_APPS: { id: RaAppId; label: string }[] = [
   { id: "video", label: "video" },
   { id: "radio", label: "ruido" },
   { id: "boards", label: "tareas" },
-  { id: "comida", label: "comida" },
   { id: "agenda", label: "agenda" },
+  { id: "comida", label: "comida" },
 ];
 
 export type CompanionMsg = {
@@ -137,6 +137,26 @@ export function resolveMiniappId(raw: string): RaAppId | null {
   if (!t) return null;
   if (MINIAPP_ALIASES[t]) return MINIAPP_ALIASES[t];
   return (RA_APP_IDS as readonly string[]).includes(t) ? (t as RaAppId) : null;
+}
+
+/** Deterministic open: "abrí agenda", bare calendario, etc. Never routes agenda to Ra. */
+export function guessOpenMiniapp(raw: string): RaAppId | null {
+  const t = String(raw || "").toLowerCase().normalize("NFC");
+  if (!t.trim()) return null;
+  if (/\b(agenda|calendario|calendar|eventos)\b/.test(t)) return "agenda";
+  const openish =
+    /\b(abrime|mostrame|open)\b/.test(t) ||
+    /\b(abri|mostra)\b/.test(t) ||
+    t.includes("abrí") ||
+    t.includes("mostrá");
+  if (!openish) return null;
+  const aliases = Object.keys(MINIAPP_ALIASES).sort((a, b) => b.length - a.length);
+  for (const alias of aliases) {
+    if (new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t)) {
+      return MINIAPP_ALIASES[alias];
+    }
+  }
+  return null;
 }
 
 export type PomoClock = {

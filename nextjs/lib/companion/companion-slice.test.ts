@@ -16,6 +16,7 @@ import {
   RA_APPS,
   COMPANION_OPEN_APP,
   resolveMiniappId,
+  guessOpenMiniapp,
   startPomodoro,
   tickCompanionDue,
 } from "./companion-core";
@@ -1707,7 +1708,7 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.equal(turn.did, "need-trello");
   });
 
-  it("open_miniapp maps tomate notas video ruido tareas comida", async () => {
+  it("open_miniapp maps tomate notas video ruido tareas comida agenda", async () => {
     const tomate = await executeNimboTool({ id: "c1", name: "open_miniapp", arguments: { id: "tomate" } }, {}, fetch);
     assert.equal(tomate.openApp, "pomo");
     const tareas = await executeNimboTool({ id: "c2", name: "open_miniapp", arguments: { id: "tareas" } }, {}, fetch);
@@ -1720,6 +1721,25 @@ describe("nimbo tools + pet bubble toggle", () => {
     assert.equal(video.openApp, "video");
     const comida = await executeNimboTool({ id: "c6", name: "open_miniapp", arguments: { id: "comida" } }, {}, fetch);
     assert.equal(comida.openApp, "comida");
+    const agenda = await executeNimboTool({ id: "c7", name: "open_miniapp", arguments: { id: "agenda" } }, {}, fetch);
+    assert.equal(agenda.openApp, "agenda");
+    assert.equal(resolveMiniappId("calendario"), "agenda");
+    assert.equal(guessOpenMiniapp("abrí agenda"), "agenda");
+    assert.equal(guessOpenMiniapp("calendario"), "agenda");
+    assert.equal(guessOpenMiniapp("qué hay en la agenda"), "agenda");
+    assert.equal(localNimboReply("abrí agenda", "Ra no está."), "Abrí agenda.");
+    assert.equal(localNimboReply("calendario", "Ra no está."), "Abrí agenda.");
+    const turn = await runNimboTurn({ text: "abrí agenda", seat: { token: null }, env: {} });
+    assert.equal(turn.openApp, "agenda");
+    assert.match(turn.reply, /agenda/i);
+    assert.doesNotMatch(turn.reply, /Ra no está/);
+    assert.equal(RA_APPS.some((app) => app.id === "agenda"), true);
+    const appsSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../components/companion/companion-apps.tsx"), "utf8");
+    assert.match(appsSrc, /data-store-app=\{app\.id\}/);
+    assert.match(appsSrc, /id === "agenda"\) return <AgendaPane/);
+    assert.match(appsSrc, /data-agenda-google/);
+    assert.match(appsSrc, /conectar Google/);
+    assert.match(appsSrc, /<strong>tus apps<\/strong>/);
   });
 
   it("pet click toggles the bubble; placement stays horizontal and near the pet", () => {

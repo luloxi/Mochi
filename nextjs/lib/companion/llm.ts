@@ -40,8 +40,8 @@ La productividad es un juego liviano: cuando anotá, marcá listo o arrancá el 
 Usá las herramientas. Si te piden una tarjeta en Ra, llamá add_ra_card (lista y color si los dicen).
 Si preguntan qué hay en el tablero, llamá list_ra_board.
 Si piden tomate, notas, video, ruido, tareas, comida o agenda, llamá open_miniapp.
-Si preguntan la agenda o el calendario de hoy, abrí agenda con open_miniapp.
-Si Ra no está, decí "Ra no está." No finjas que agregaste nada.
+Si preguntan la agenda o el calendario de hoy, abrí agenda con open_miniapp. Nunca uses list_ra_board ni digas "Ra no está." por la agenda: agenda es Google Calendar, no Ra.
+Si Ra no está y te piden una tarjeta de Ra, decí "Ra no está." No finjas que agregaste nada.
 Nunca contestes solo un saludo si te pidieron una tarea.
 No mandes recados, no pongas videos, no mandes a nadie a otro sitio.
 No digas que sos Grok ni Chano.`;
@@ -229,6 +229,15 @@ export function localNimboReply(userText: string, boardLine?: string): string {
   }
   if (/\b(agreg|sumá|suma|nueva|anot|recordame|tarjeta)\b/.test(t)) {
     return boardLine || "Anotado.";
+  }
+  if (/\b(agenda|calendario|calendar|eventos)\b/.test(t)) {
+    return "Abrí agenda.";
+  }
+  if (
+    (t.includes("abrí") || t.includes("mostrá") || /\b(abri|mostra|abrime|mostrame|open)\b/.test(t)) &&
+    /\b(tomate|pomo|notas|video|ruido|radio|tareas|tablero|comida|recetas)\b/.test(t)
+  ) {
+    return "Dale.";
   }
   if (/\b(hola|holis|buenas)\b/.test(t)) {
     return missing ? "Hola. Ra no está." : "Hola. Ra está acá.";
