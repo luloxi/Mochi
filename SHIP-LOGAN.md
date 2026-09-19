@@ -2,7 +2,9 @@
 
 **Prod:** https://mochiagents.vercel.app/  
 **Repo:** https://github.com/luloxi/Mochi (push only to luloxi)  
-**Base:** `da7e246` (phone launcher + sheet) + this slice
+**SHA:** `d7b3bea` (full: `d7b3beaf7def33983789f3fabf5cb5050fe2180e`)  
+**Base:** `da7e246` (phone launcher + sheet) + character/launcher/agenda slice (`f198d5b`) + DeskAppId build fix  
+**Vercel:** production READY on https://mochiagents.vercel.app/ (alias live)
 
 ## What shipped
 
